@@ -15,7 +15,7 @@
 
 #include <ap/Iso8583JSON.h>
 
-#include "Encrypt.h"
+#include <ap/Encrypt.h>
 
 using Poco::NumberFormatter;
 using Poco::NumberParser;

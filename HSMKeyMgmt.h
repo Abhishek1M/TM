@@ -142,15 +142,19 @@ string HSMKeyMgmt::translateBDKtoZPKTDES(string srckeyname, string destkeyname,
 
     string resp = Utility::ofPostRequest(Config::hsmurl, hsmrequest.toMsg(), 10);
 
-    HSMMsg hsmresp;
-    hsmresp.parseMsg(resp);
-
-    string ec = hsmresp.getField(_ERROR_CODE);
-
-    if (ec.compare("00") == 0) {
-        newpinblock = hsmresp.getField(_DEST_PIN_BLK);
-    } else {
+    if ((resp.compare("TMO") == 0) || (resp.compare("NOK") == 0)) {
         newpinblock = "NOK";
+    } else {
+        HSMMsg hsmresp;
+        hsmresp.parseMsg(resp);
+
+        string ec = hsmresp.getField(_ERROR_CODE);
+
+        if (ec.compare("00") == 0) {
+            newpinblock = hsmresp.getField(_DEST_PIN_BLK);
+        } else {
+            newpinblock = "NOK";
+        }
     }
 
     return newpinblock;

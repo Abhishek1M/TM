@@ -2,7 +2,7 @@
 #include <Poco/Logger.h>
 #include <Poco/Dynamic/VarHolder.h>
 
-#include "Encrypt.h"
+#include <ap/Encrypt.h>
 
 using namespace std;
 
@@ -15,6 +15,9 @@ public:
     static string dburl;
     static string mq;
     static string moduleName;
+    static bool isFallbackallowed;
+    static string fallbackExclusionList;
+    static int maxCashAtPOS;
     //
     static queue<string> msg;
     //

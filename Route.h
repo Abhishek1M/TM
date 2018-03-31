@@ -29,17 +29,20 @@ public:
     string getUrl();
     long getTimeout();
     string getisskeyname();
+    int getRepeatReversal();
     //
     void setPname(string z);
     void setUrl(string z);
     void setTimeout(long z);
     void setisskeyname(string z);
+    void setRepeatReversal(int z);
 
 private:
     string pname;
     string url;
     long timeout;
     string isskeyname;
+    int repeat_reversal;
 };
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -80,5 +83,16 @@ void Route::setisskeyname(string z) {
 
 string Route::getisskeyname() {
     return isskeyname;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+int Route::getRepeatReversal() {
+    return repeat_reversal;
+}
+///////////////////////////////////////////////////////////////////////////////
+
+void Route::setRepeatReversal(int z) {
+    repeat_reversal = z;
 }
 #endif /* ROUTE_H */

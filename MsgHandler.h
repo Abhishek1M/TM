@@ -26,8 +26,8 @@ class MsgHandler {
 public:
 
     MsgHandler(Logger& logger) : td_logger(logger) {
-
     }
+    
     virtual ~MsgHandler();
 
     bool processFinMsg(Iso8583JSON& msg, TranMgrDBHandler tmdbh);
@@ -61,13 +61,13 @@ bool MsgHandler::processFinMsg(Iso8583JSON& msg, TranMgrDBHandler tmdbh) {
 
     msg.setExtendedField(_009_PREV_TRAN_NR, "0");
 
-    //    if (msg.isFieldSet(_035_TRACK_2_DATA)) {
-    //        Track2 trk2(msg.getField(_035_TRACK_2_DATA));
-    //
-    //        msg.setField(_002_PAN, trk2.getCardnumber());
-    //        msg.setField(_014_DATE_EXPIRATION, trk2.getExpirydate());
-    //        msg.setField(_040_SERVICE_RESTRICTION_CODE, trk2.getService_rest_code());
-    //    }
+    if (msg.isFieldSet(_035_TRACK_2_DATA)) {
+        Track2 trk2(msg.getField(_035_TRACK_2_DATA));
+
+        msg.setField(_002_PAN, trk2.getCardnumber());
+        msg.setField(_014_DATE_EXPIRATION, trk2.getExpirydate());
+        msg.setField(_040_SERVICE_RESTRICTION_CODE, trk2.getService_rest_code());
+    }
 
     NodeInfo ni(msg.getNodeInfo());
 
@@ -91,6 +91,8 @@ bool MsgHandler::processFinMsg(Iso8583JSON& msg, TranMgrDBHandler tmdbh) {
 
     // Fill in Card Country details
 
+    // Check Fallback 
+    
     // Perform ICA Check
 
     // Perform Merchant Limit Check
@@ -212,6 +214,7 @@ bool MsgHandler::processFinMsg(Iso8583JSON& msg, TranMgrDBHandler tmdbh) {
     msg.setField(_038_AUTH_ID_RSP, msg_from_issuer.getField(_038_AUTH_ID_RSP));
     msg.setField(_039_RSP_CODE, msg_from_issuer.getField(_039_RSP_CODE));
     msg.setField(_044_ADDITIONAL_RSP_DATA, msg_from_issuer.getField(_044_ADDITIONAL_RSP_DATA));
+    msg.setField(_054_ADDITIONAL_AMOUNTS, msg_from_issuer.getField(_054_ADDITIONAL_AMOUNTS));
     msg.setField(_055_EMV_DATA, msg_from_issuer.getField(_055_EMV_DATA));
     msg.setField(_102_ACCOUNT_ID_1, msg_from_issuer.getField(_102_ACCOUNT_ID_1));
     msg.setField(_103_ACCOUNT_ID_2, msg_from_issuer.getField(_103_ACCOUNT_ID_2));
@@ -733,8 +736,7 @@ bool MsgHandler::constructPINBlock(Iso8583JSON& msg, string iss_key_name) {
 
     if (newpinblock.empty() || (newpinblock.compare("NOK") == 0)) {
         td_logger.error("constructPINBlock - PIN Block is empty" + msg.dumpMsg());
-        msg.setField(_039_RSP_CODE,
-                _63_SECURITY_VIOLATION);
+        msg.setField(_039_RSP_CODE, _81_CRYPTO_ERROR);
 
         return false;
     } else {

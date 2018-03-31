@@ -81,6 +81,10 @@ string Config::dburl;
 string Config::hsmurl;
 string Config::mq;
 string Config::moduleName;
+bool Config::isFallbackallowed;
+string Config::fallbackExclusionList;
+int Config::maxCashAtPOS;
+
 //
 queue<string> Config::msg;
 //
@@ -96,9 +100,6 @@ public:
 
     virtual void run() {
         try {
-            DBManager dbm;
-
-            //pqxx::connection c(dbm.getConnectionURL());
             pqxx::connection c(Config::dburl);
 
             string query =
@@ -106,13 +107,30 @@ public:
                     + _modulename + "';";
 
             while (1) {
-                pqxx::work txn(c);
-                txn.exec(query);
-                txn.commit();
+                try {
+                    pqxx::work txn(c);
+                    txn.exec(query);
+                    txn.commit();
 
-                sleep(30);
+                    sleep(30);
+                } catch (exception &e1) {
+                    m_logger.error("Error in DBUpdate#run - update");
+                    m_logger.error(e1.what());
+
+                    try {
+                        c.disconnect();
+
+                        sleep(30);
+
+                        pqxx::connection c(Config::dburl);
+                    } catch (exception &e2) {
+                        m_logger.error("Error in DBUpdate#run - disconnect");
+                        m_logger.error(e2.what());
+                    }
+                }
             }
         } catch (exception &e) {
+            m_logger.error("Error in DBUpdate#run");
             m_logger.error(e.what());
         }
     }
@@ -151,7 +169,51 @@ public:
 private:
     Logger& m_logger;
 };
+////////////////////////////////////////////////////////////////////////////////
 
+class TMReloadHandler : public HTTPRequestHandler {
+public:
+
+    TMReloadHandler() {
+    }
+
+    ~TMReloadHandler() {
+    }
+
+    virtual void handleRequest(HTTPServerRequest &req, HTTPServerResponse &resp) {
+        Application& app = Application::instance();
+        string responseStr = "Reload - OK";
+
+        app.loadConfiguration(Application::PRIO_APPLICATION);
+
+        Logger& lgr = app.logger().get(Config::moduleName);
+        lgr.information("Reloading values.");
+
+        Config::hsmurl = app.config().getString("HSMURL");
+        Config::maxCashAtPOS = app.config().getInt("CashAtPOSLimit", 0);
+        Config::isFallbackallowed = app.config().getBool("AllowFallback", false);
+        Config::fallbackExclusionList = app.config().getString("FallbackExclusionList", "");
+
+        lgr.information("New HSM URL - " + Config::hsmurl);
+        lgr.information("CashAtPOSLimit - " + NumberFormatter::format(Config::maxCashAtPOS));
+        if (Config::isFallbackallowed == true) {
+            lgr.information("Fallback is allowed");
+        } else {
+            lgr.information("Fallback is not allowed");
+        }
+
+        resp.setStatus(HTTPResponse::HTTP_OK);
+        resp.setContentType("application/json; charset=UTF-8");
+
+        ostream& out = resp.send();
+        out << responseStr;
+
+        out.flush();
+
+        lgr.information("Reloading values - complete");
+        lgr.notice("Responded with OK");
+    }
+};
 ////////////////////////////////////////////////////////////////////////////////
 
 class TMRequestHandler : public HTTPRequestHandler {
@@ -198,72 +260,400 @@ private:
 //////////////////////////////////////////////////////
 
 bool TMRequestHandler::isValidMsg(Iso8583JSON& msg) {
-    string msgtype = msg.getMsgType();
+    bool data_for_routing = false;
 
-    if ((msgtype.compare("0100") == 0) || (msgtype.compare("0200") == 0)) {
-        // Check Field 002
-        if (!msg.isFieldSet(2)) {
-            msg.setField(44, "002");
+    if ((msg.getMsgType().compare(_0100_AUTH_REQ) == 0) ||
+            (msg.getMsgType().compare(_0200_TRAN_REQ) == 0)) {
+        // Field 002
+        if (msg.isFieldSet(_002_PAN)) {
+            int pan_len = msg.getField(_002_PAN).length();
+            if (pan_len > 19 || pan_len < 12) {
+                msg.setField(_044_ADDITIONAL_RSP_DATA,
+                        "002");
+
+                m_logger.error("Incorrect Request - Field 2 length is incorrect");
+                return false;
+            }
+
+            data_for_routing = true;
+        }
+
+        // Field 035
+        if (msg.isFieldSet(_035_TRACK_2_DATA)) {
+            int track2_len = msg.getField(
+                    _035_TRACK_2_DATA).
+                    length();
+            if (track2_len > 37 || track2_len < 12) {
+                msg.setField(_044_ADDITIONAL_RSP_DATA,
+                        "035");
+
+                m_logger.error("Incorrect Request - Field 35 length is incorrect");
+                return false;
+            }
+
+            data_for_routing = true;
+        }
+
+        // Field 003
+        if (!msg.isFieldSet(_003_PROCESSING_CODE)) {
+            msg.setField(_044_ADDITIONAL_RSP_DATA,
+                    "003");
+
+            m_logger.error("Incorrect Request - Field 3 is absent");
+            return false;
+        } else if (msg.getField(_003_PROCESSING_CODE).
+                length() != 6) {
+            msg.setField(_044_ADDITIONAL_RSP_DATA, "003");
+
+            m_logger.error("Incorrect Request - Field 003 length is incorrect");
             return false;
         }
 
-        // Check Field 003
-        if (!msg.isFieldSet(3)) {
-            msg.setField(44, "003");
+        // Field 004
+        if (!msg.isFieldSet(_004_AMOUNT_TRANSACTION)) {
+            m_logger.error("Incorrect Request - Field 4 is absent");
+            msg.setField(_044_ADDITIONAL_RSP_DATA, "004");
             return false;
         }
 
-        // Check Field 004
-        if (!msg.isFieldSet(4)) {
-            msg.setField(44, "004");
+        // Field 007
+        if (!msg.isFieldSet(_007_TRANSMISSION_DATE_TIME)) {
+            m_logger.error("Incorrect Request - Field 7 is absent");
+            return false;
+        } else if (msg.getField(_007_TRANSMISSION_DATE_TIME).
+                length() != 10) {
+            msg.setField(_044_ADDITIONAL_RSP_DATA,
+                    "007");
+
+            m_logger.error("Incorrect Request - Field 007 length is incorrect");
             return false;
         }
 
-        // Check Field 007
-        if (!msg.isFieldSet(7)) {
-            msg.setField(44, "007");
+        // Field 011
+        if (!msg.isFieldSet(_011_SYSTEMS_TRACE_AUDIT_NR)) {
+            m_logger.error("Field 11 is absent");
+
+            return false;
+        } else if (msg.getField(_011_SYSTEMS_TRACE_AUDIT_NR).
+                length() != 6) {
+            msg.setField(_044_ADDITIONAL_RSP_DATA,
+                    "011");
+
+            m_logger.error("Field 011 length is incorrect");
             return false;
         }
 
-        // Check Field 011
-        if (!msg.isFieldSet(11)) {
-            msg.setField(44, "011");
+        // Field 012
+        if (!msg.isFieldSet(_012_TIME_LOCAL)) {
+            m_logger.error("Field 12 is absent");
             return false;
         }
 
-        // Check Field 012
-        if (!msg.isFieldSet(12)) {
-            msg.setField(44, "012");
+        if (msg.getField(_012_TIME_LOCAL).
+                length() != 6) {
+            msg.setField(_044_ADDITIONAL_RSP_DATA,
+                    "012");
+
+            m_logger.error("Field 012 length is incorrect");
             return false;
         }
 
-        // Check Field 013
-        if (!msg.isFieldSet(13)) {
-            msg.setField(44, "013");
+        // Field 013
+        if (!msg.isFieldSet(_013_DATE_LOCAL)) {
+            m_logger.error("Field 13 is absent");
             return false;
         }
 
-        // Check Field 022
-        if (!msg.isFieldSet(22)) {
-            msg.setField(44, "022");
+        if (msg.getField(_013_DATE_LOCAL).length() != 4) {
+            msg.setField(_044_ADDITIONAL_RSP_DATA,
+                    "013");
+
+            m_logger.error("Field 013 length is incorrect");
             return false;
         }
 
-        // Check Field 035
-        //        if (!msg.isFieldSet(35)) {
-        //            msg.setField(44, "035");
-        //            return false;
-        //        }
+        // Field 014
+        if (msg.isFieldSet(_014_DATE_EXPIRATION)) {
+            string expdt = msg.getField(
+                    _014_DATE_EXPIRATION);
+            if (expdt.length() != 4) {
+                m_logger.error("Field 14 is invalid");
+                msg.setField(_044_ADDITIONAL_RSP_DATA, "014");
+                return false;
+            }
+        }
 
-        // Check Field 041
-        if (!msg.isFieldSet(41)) {
-            msg.setField(44, "041");
+        // Field 018
+        if (msg.isFieldSet(_018_MERCHANT_TYPE)) {
+            string mcc = msg.getField(
+                    _018_MERCHANT_TYPE);
+            if (mcc.length() != 4) {
+                msg.setField(_044_ADDITIONAL_RSP_DATA, "018");
+                m_logger.error("Field 18 is invalid");
+                return false;
+            }
+        }
+
+        // Field 022
+        if (!msg.isFieldSet(_022_POS_ENTRY_MODE)) {
+            m_logger.error("Field 22 is absent");
+
+            return false;
+        } else if (msg.getField(_022_POS_ENTRY_MODE).
+                length() != 3) {
+            msg.setField(_044_ADDITIONAL_RSP_DATA, "022");
+
+            m_logger.error("Field 022 length is incorrect");
             return false;
         }
 
-        // Check Field 042
-        if (!msg.isFieldSet(42)) {
-            msg.setField(44, "042");
+        // Field 25
+        if (!msg.isFieldSet(_025_POS_CONDITION_CODE)) {
+            m_logger.error("Field 25 is absent");
+            msg.setField(_044_ADDITIONAL_RSP_DATA,
+                    "025");
+            return false;
+        } else if (msg.getField(_025_POS_CONDITION_CODE).
+                length() != 2) {
+            msg.setField(_044_ADDITIONAL_RSP_DATA, "025");
+
+            m_logger.error("Field 025 length is incorrect");
+            return false;
+        }
+
+        if (!msg.isFieldSet(_041_CARD_ACCEPTOR_TERM_ID)) {
+            m_logger.error("Field 41 is absent");
+            msg.setField(_044_ADDITIONAL_RSP_DATA,
+                    "041");
+            return false;
+        } else if (msg.getField(_041_CARD_ACCEPTOR_TERM_ID).
+                length() != 8) {
+            msg.setField(_044_ADDITIONAL_RSP_DATA,
+                    "041");
+
+            m_logger.error("Field 041 length is incorrect");
+            return false;
+        }
+
+        if (!msg.isFieldSet(_042_CARD_ACCEPTOR_ID_CODE)) {
+            m_logger.error("Field 42 is absent");
+            return false;
+        }
+
+        if (!msg.isFieldSet(_043_CARD_ACCEPTOR_NAME_LOC)) {
+            m_logger.error("Field 43 is absent");
+            return false;
+        }
+
+        if (msg.getField(_043_CARD_ACCEPTOR_NAME_LOC).length() > 40) {
+            m_logger.error("Field 43 length is greater than 40");
+            return false;
+        }
+
+        if (!msg.isFieldSet(_049_CURRENCY_CODE_TRAN)) {
+            m_logger.error("Field 49 is absent");
+            return false;
+        }
+
+        if (!msg.isFieldSet(_062_TRANS_ID)) {
+            m_logger.error("Field 62 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(
+                _001_ACQ_NODE_KEY)) {
+            m_logger.error("Extended Field 123_001 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(
+                _003_STORE_ID)) {
+            m_logger.error("Extended Field 123_003 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(
+                _004_DEVICE_ID)) {
+            m_logger.error("Extended Field 123_004 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(
+                _005_ACQ_PART_NAME)) {
+            m_logger.error("Extended Field 123_005 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(
+                _006_TERM_BATCH_NR)) {
+            m_logger.error("Extended Field 123_006 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(
+                _008_RETAILER_ID)) {
+            m_logger.error("Extended Field 123_008 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(
+                _011_ORIGINATOR_TYPE)) {
+            m_logger.error("Extended Field 123_011 is absent");
+            return false;
+        }
+    } else
+
+        if (msg.getMsgType().compare(_0220_TRAN_ADV) == 0) {
+        // Check for MTI = 0220
+        if (!msg.isFieldSet(_003_PROCESSING_CODE)) {
+            m_logger.error("Field 3 is absent");
+            return false;
+        }
+
+        if (!msg.isFieldSet(_004_AMOUNT_TRANSACTION)) {
+            m_logger.error("Field 4 is absent");
+            return false;
+        }
+
+        if (!msg.isFieldSet(_007_TRANSMISSION_DATE_TIME)) {
+            m_logger.error("Field 7 is absent");
+            return false;
+        }
+
+        if (!msg.isFieldSet(_011_SYSTEMS_TRACE_AUDIT_NR)) {
+            m_logger.error("Field 11 is absent");
+
+            return false;
+        }
+
+        if (!msg.isFieldSet(_022_POS_ENTRY_MODE)) {
+            m_logger.error("Field 22 is absent");
+
+            return false;
+        }
+
+        if (!msg.isFieldSet(_025_POS_CONDITION_CODE)) {
+            m_logger.error("Field 25 is absent");
+            return false;
+        }
+
+        if (!msg.isFieldSet(_041_CARD_ACCEPTOR_TERM_ID)) {
+            m_logger.error("Field 41 is absent");
+            return false;
+        }
+
+        if (!msg.isFieldSet(_042_CARD_ACCEPTOR_ID_CODE)) {
+            m_logger.error("Field 42 is absent");
+            return false;
+        }
+
+        if (!msg.isFieldSet(_049_CURRENCY_CODE_TRAN)) {
+            m_logger.error("Field 49 is absent");
+            return false;
+        }
+
+        if (!msg.isFieldSet(_062_TRANS_ID)) {
+            m_logger.error("Field 62 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(
+                _001_ACQ_NODE_KEY)) {
+            m_logger.error("Extended Field 123_001 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(
+                _003_STORE_ID)) {
+            m_logger.error("Extended Field 123_003 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(
+                _004_DEVICE_ID)) {
+            m_logger.error("Extended Field 123_004 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(
+                _005_ACQ_PART_NAME)) {
+            m_logger.error("Extended Field 123_005 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(
+                _006_TERM_BATCH_NR)) {
+            m_logger.error("Extended Field 123_006 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(
+                _008_RETAILER_ID)) {
+            m_logger.error("Extended Field 123_008 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(
+                _011_ORIGINATOR_TYPE)) {
+            m_logger.error("Extended Field 123_011 is absent");
+            return false;
+        }
+    } else
+        // 0520 MTI
+        if (msg.getMsgType().compare(_0220_TRAN_ADV) == 0) {
+        if (!msg.isFieldSet(_011_SYSTEMS_TRACE_AUDIT_NR)) {
+            m_logger.error("Field 11 is absent");
+
+            return false;
+        }
+
+        if (!msg.isFieldSet(_041_CARD_ACCEPTOR_TERM_ID)) {
+            m_logger.error("Field 41 is absent");
+            return false;
+        }
+
+        if (!msg.isFieldSet(_042_CARD_ACCEPTOR_ID_CODE)) {
+            m_logger.error("Field 42 is absent");
+            return false;
+        }
+
+        if (!msg.isFieldSet(_049_CURRENCY_CODE_TRAN)) {
+            m_logger.error("Field 49 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(_001_ACQ_NODE_KEY)) {
+            m_logger.error("Extended Field 123_001 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(_003_STORE_ID)) {
+            m_logger.error("Extended Field 123_003 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(_004_DEVICE_ID)) {
+            m_logger.error("Extended Field 123_004 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(_005_ACQ_PART_NAME)) {
+            m_logger.error("Extended Field 123_005 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(_006_TERM_BATCH_NR)) {
+            m_logger.error("Extended Field 123_006 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(_008_RETAILER_ID)) {
+            m_logger.error("Extended Field 123_008 is absent");
+            return false;
+        }
+
+        if (!msg.isExtendedFieldSet(_011_ORIGINATOR_TYPE)) {
+            m_logger.error("Extended Field 123_011 is absent");
             return false;
         }
     }
@@ -368,6 +758,8 @@ public:
             return new TMGetStatusHandler(m_logger);
         } else if (request.getURI() == "/transaction") {
             return new TMRequestHandler(m_logger);
+        } else if (request.getURI() == "/reload") {
+            return new TMReloadHandler();
         } else {
             return 0;
         }
@@ -400,10 +792,24 @@ protected:
         ServerApplication::defineOptions(options);
 
         options.addOption(
-                Option("help", "h", "display argument help information").required(
-                false).repeatable(false).callback(
-                OptionCallback<TMServerApp>(this,
-                &TMServerApp::handleHelp)));
+                Option("help", "h", "display argument help information")
+                .required(false)
+                .repeatable(false)
+                .callback(OptionCallback<TMServerApp>(this, &TMServerApp::handleHelp)));
+
+        options.addOption(
+                Option("config-file", "f", "load configuration data from a file")
+                .required(false)
+                .repeatable(true)
+                .argument("file")
+                .callback(OptionCallback<TMServerApp>(this, &TMServerApp::handleConfig)));
+
+    }
+
+    ////////////////////////////////////
+
+    void handleConfig(const string& name, const string& value) {
+        loadConfiguration(value);
     }
 
     ////////////////////////////////////
@@ -417,7 +823,6 @@ protected:
         stopOptionsProcessing();
         _helpRequested = true;
     }
-
     ////////////////////////////////////
 
     int main(const vector<string> &) {
@@ -445,6 +850,9 @@ protected:
 
             Config::dburl = config().getString("DBURL");
             Config::hsmurl = config().getString("HSMURL");
+            Config::maxCashAtPOS = config().getInt("CashAtPOSLimit", 0);
+            Config::isFallbackallowed = config().getBool("AllowFallback", false);
+            Config::fallbackExclusionList = config().getString("FallbackExclusionList", "");
 
             AutoPtr<FileChannel> pChannel(new FileChannel);
             AutoPtr<PatternFormatter> pPF(new PatternFormatter);

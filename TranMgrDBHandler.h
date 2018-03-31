@@ -9,9 +9,10 @@
 #include <ap/constants.h>
 #include <ap/Utility.h>
 #include <ap/Iso8583JSON.h>
+#include <pqxx/field.hxx>
 #include "DBManager.h"
 #include "Route.h"
-#include "Encrypt.h"
+#include <ap/Encrypt.h>
 #include "Config.h"
 #include "Tran.h"
 
@@ -409,7 +410,7 @@ bool TranMgrDBHandler::getIssuerNode(Iso8583JSON& msg, Route& rt) {
     acquirer_node = trim(acquirer_node);
     string pan = msg.getField(_002_PAN).substr(0, 12);
 
-    string query = "select rt_issuer_node, bin_owner, crdbflag, card_country, c.pname, timeout, acq_instt_id, fwd_instt_id, iss_keyname, connurl from getissnode('" + acquirer_node + "','" + pan + "')  a left join onl_iss_nodes b on a.rt_issuer_node=b.iss_node_name left join onl_process c on b.pname=c.pname;";
+    string query = "select rt_issuer_node, bin_owner, crdbflag, card_country, c.pname, timeout, acq_instt_id, fwd_instt_id, iss_keyname, connurl,repeat_reversal from getissnode('" + acquirer_node + "','" + pan + "')  a left join onl_iss_nodes b on a.rt_issuer_node=b.iss_node_name left join onl_process c on b.pname=c.pname;";
 
     // Create a non-transactional object
     pqxx::work txn(c);
@@ -430,6 +431,7 @@ bool TranMgrDBHandler::getIssuerNode(Iso8583JSON& msg, Route& rt) {
     rt.setTimeout(r[0][5].as<long>());
     rt.setUrl(r[0][9].as<string>());
     rt.setisskeyname(r[0][8].as<string>());
+    rt.setRepeatReversal(r[0][10].as<int>());
 
     msg.setField(_032_ACQUIRING_INST_ID_CODE, r[0][6].as<string>());
     msg.setField(_033_FORWARDING_INST_ID_CODE, r[0][7].as<string>());
@@ -471,7 +473,7 @@ bool TranMgrDBHandler::getExtdIssuerNode(Iso8583JSON& msg, Route& rt) {
     acquirer_node = trim(acquirer_node);
     extd_code = trim(extd_code);
 
-    string query="select issuer_node, bin_owner, c.pname, timeout, acq_instt_id, fwd_instt_id, iss_keyname, connurl from onl_routes_extd a left join onl_iss_nodes b on a.issuer_node=b.iss_node_name left join onl_process c on b.pname=c.pname where acquirer_node='" + acquirer_node + "' and extd_payment_code='" + extd_code + "'  limit 1";
+    string query = "select issuer_node, bin_owner, c.pname, timeout, acq_instt_id, fwd_instt_id, iss_keyname, connurl from onl_routes_extd a left join onl_iss_nodes b on a.issuer_node=b.iss_node_name left join onl_process c on b.pname=c.pname where acquirer_node='" + acquirer_node + "' and extd_payment_code='" + extd_code + "'  limit 1";
     // Create a non-transactional object
     pqxx::work txn(c);
 
@@ -491,6 +493,9 @@ bool TranMgrDBHandler::getExtdIssuerNode(Iso8583JSON& msg, Route& rt) {
     rt.setUrl(r[0][7].as<string>());
     rt.setisskeyname(r[0][6].as<string>());
 
+    msg.setField(_032_ACQUIRING_INST_ID_CODE, r[0][4].as<string>());
+    msg.setField(_033_FORWARDING_INST_ID_CODE, r[0][5].as<string>());
+
     msg.setField(_122_NODE_INFO, ni.getNodeInfo());
 
     c.disconnect();
@@ -506,7 +511,7 @@ bool TranMgrDBHandler::getTranInfo(string acq_node_key, Tran& tran) {
             td_logger.fatal("getTranInfo - Could not connect to database");
             return false;
         }
-        string sql = "select * from FetchTranByAcqNodeKey2('" + acq_node_key + "');";
+        string sql = "select * from FetchTranByAcqNodeKey('" + acq_node_key + "');";
 
         // Create a non-transactional object
         pqxx::work txn(c);
@@ -588,7 +593,7 @@ bool TranMgrDBHandler::updateadjustment(string tran_nr) {
 ////////////////////////////////////////////////////////////////////////////////
 
 bool TranMgrDBHandler::getrouteinfo(string issuer_node_name, Route& rt) {
-    string query = "select a.pname, a.timeout, b.connurl, '' from onl_iss_nodes a left join onl_process b on a.pname=b.pname where a.iss_node_name='" + issuer_node_name + "';";
+    string query = "select a.pname, a.timeout, b.connurl, '',repeat_reversal from onl_iss_nodes a left join onl_process b on a.pname=b.pname where a.iss_node_name='" + issuer_node_name + "';";
 
     pqxx::connection c(Config::dburl);
     if (!c.is_open()) {
@@ -609,6 +614,7 @@ bool TranMgrDBHandler::getrouteinfo(string issuer_node_name, Route& rt) {
     rt.setPname(r[0][0].as<string>());
     rt.setTimeout(r[0][1].as<long>());
     rt.setUrl(r[0][2].as<string>());
+    rt.setRepeatReversal(r[0][4].as<int>());
 
     c.disconnect();
 

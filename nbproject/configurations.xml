@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configurationDescriptor version="100">
+  <logicalFolder name="root" displayName="root" projectFiles="true" kind="ROOT">
+    <logicalFolder name="HeaderFiles"
+                   displayName="Header Files"
+                   projectFiles="true">
+      <itemPath>Config.h</itemPath>
+      <itemPath>DBManager.h</itemPath>
+      <itemPath>HSMKeyInfo.h</itemPath>
+      <itemPath>HSMKeyMgmt.h</itemPath>
+      <itemPath>HSMMsg.h</itemPath>
+      <itemPath>MsgHandler.h</itemPath>
+      <itemPath>ProcessTimeout.h</itemPath>
+      <itemPath>Route.h</itemPath>
+      <itemPath>Track2.h</itemPath>
+      <itemPath>Tran.h</itemPath>
+      <itemPath>TranMgrDBHandler.h</itemPath>
+      <itemPath>TranType.h</itemPath>
+      <itemPath>constants.h</itemPath>
+    </logicalFolder>
+    <logicalFolder name="ResourceFiles"
+                   displayName="Resource Files"
+                   projectFiles="true">
+    </logicalFolder>
+    <logicalFolder name="SourceFiles"
+                   displayName="Source Files"
+                   projectFiles="true">
+      <itemPath>TranMgr.cpp</itemPath>
+    </logicalFolder>
+    <logicalFolder name="TestFiles"
+                   displayName="Test Files"
+                   projectFiles="false"
+                   kind="TEST_LOGICAL_FOLDER">
+    </logicalFolder>
+    <logicalFolder name="ExternalFiles"
+                   displayName="Important Files"
+                   projectFiles="false"
+                   kind="IMPORTANT_FILES_FOLDER">
+      <itemPath>Makefile</itemPath>
+    </logicalFolder>
+  </logicalFolder>
+  <projectmakefile>Makefile</projectmakefile>
+  <confs>
+    <conf name="Debug" type="1">
+      <toolsSet>
+        <compilerSet>GNU|GNU</compilerSet>
+        <dependencyChecking>true</dependencyChecking>
+        <rebuildPropChanged>false</rebuildPropChanged>
+      </toolsSet>
+      <compileType>
+        <ccTool>
+          <incDir>
+            <pElem>/usr/local/include/</pElem>
+            <pElem>/usr/pgsql-9.4/include</pElem>
+            <pElem>/usr/include</pElem>
+          </incDir>
+          <commandLine>-lPocoFoundation -lPocoUtil -lPocoNet -lPocoJSON -lPocoCrypto -lpqxx -lpq</commandLine>
+        </ccTool>
+        <linkerTool>
+          <output>/home/abhishek/TranMgr</output>
+          <linkerAddLib>
+            <pElem>/usr/local/lib/</pElem>
+            <pElem>/usr/pgsql-9.4/lib</pElem>
+          </linkerAddLib>
+          <commandLine>-lpqxx -lpq</commandLine>
+        </linkerTool>
+      </compileType>
+      <packaging>
+        <packType>RPM</packType>
+        <packFileList>
+          <packFileListElem type="File"
+                            to="${PACKAGE_TOP_DIR}bin/${OUTPUT_BASENAME}"
+                            from="${OUTPUT_PATH}"
+                            perm="755"
+                            owner="root"
+                            group="bin"/>
+          <packFileListElem type="File"
+                            to="${PACKAGE_TOP_DIR}bin/${OUTPUT_BASENAME}"
+                            from="${OUTPUT_PATH}"
+                            perm="755"
+                            owner="root"
+                            group="bin"/>
+          <packFileListElem type="File"
+                            to="${PACKAGE_TOP_DIR}bin/${OUTPUT_BASENAME}"
+                            from="${OUTPUT_PATH}"
+                            perm="755"
+                            owner="root"
+                            group="bin"/>
+          <packFileListElem type="File"
+                            to="${PACKAGE_TOP_DIR}bin/${OUTPUT_BASENAME}"
+                            from="${OUTPUT_PATH}"
+                            perm="755"
+                            owner="root"
+                            group="bin"/>
+          <packFileListElem type="File"
+                            to="${PACKAGE_TOP_DIR}bin/${OUTPUT_BASENAME}"
+                            from="${OUTPUT_PATH}"
+                            perm="755"
+                            owner="root"
+                            group="bin"/>
+          <packFileListElem type="File"
+                            to="${PACKAGE_TOP_DIR}bin/${OUTPUT_BASENAME}"
+                            from="${OUTPUT_PATH}"
+                            perm="755"
+                            owner="root"
+                            group="bin"/>
+        </packFileList>
+        <packInfoList>
+          <packInfoListElem name="Summary" value="Summary..." mandatory="true"/>
+          <packInfoListElem name="Name" value="tm" mandatory="true"/>
+          <packInfoListElem name="Version" value="1.0" mandatory="true"/>
+          <packInfoListElem name="Release" value="1" mandatory="true"/>
+          <packInfoListElem name="Group" value="Applications/System" mandatory="true"/>
+          <packInfoListElem name="License" value="BSD-type" mandatory="true"/>
+          <packInfoListElem name="%description" value="Description..." mandatory="true"/>
+        </packInfoList>
+      </packaging>
+      <item path="Config.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="DBManager.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="HSMKeyInfo.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="HSMKeyMgmt.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="HSMMsg.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="MsgHandler.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="ProcessTimeout.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="Route.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="Track2.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="Tran.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="TranMgr.cpp" ex="false" tool="1" flavor2="0">
+      </item>
+      <item path="TranMgrDBHandler.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="TranType.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="constants.h" ex="false" tool="3" flavor2="0">
+      </item>
+    </conf>
+    <conf name="Release" type="1">
+      <toolsSet>
+        <compilerSet>GNU|GNU</compilerSet>
+        <dependencyChecking>true</dependencyChecking>
+        <rebuildPropChanged>false</rebuildPropChanged>
+      </toolsSet>
+      <compileType>
+        <cTool>
+          <developmentMode>5</developmentMode>
+        </cTool>
+        <ccTool>
+          <developmentMode>5</developmentMode>
+        </ccTool>
+        <fortranCompilerTool>
+          <developmentMode>5</developmentMode>
+        </fortranCompilerTool>
+        <asmTool>
+          <developmentMode>5</developmentMode>
+        </asmTool>
+      </compileType>
+      <item path="Config.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="DBManager.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="HSMKeyInfo.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="HSMKeyMgmt.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="HSMMsg.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="MsgHandler.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="ProcessTimeout.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="Route.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="Track2.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="Tran.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="TranMgr.cpp" ex="false" tool="1" flavor2="0">
+      </item>
+      <item path="TranMgrDBHandler.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="TranType.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="constants.h" ex="false" tool="3" flavor2="0">
+      </item>
+    </conf>
+  </confs>
+</configurationDescriptor>
