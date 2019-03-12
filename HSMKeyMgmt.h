@@ -1,6 +1,6 @@
 /* 
  * File:   HSMKeyMgmt.h
- * Author: Abhishek1.M
+ * Author: Abhishek M
  *
  * Created on 16 March, 2017, 12:55 PM
  */
@@ -18,7 +18,6 @@ private:
 public:
 
     HSMKeyMgmt(string db_url) : dburl(db_url) {
-
     }
 
     HSMKeyInfo getKeyDetails(string keyname);
@@ -298,7 +297,7 @@ string HSMKeyMgmt::translateZPKtoZPK(string srckeyname, string destkeyname,
     string resp = Utility::ofPostRequest(Config::hsmurl, hsmrequest.toMsg(), 10);
 
     if (resp.empty()) {
-        return false;
+        return "NOK";
     }
 
     HSMMsg hsmresp;

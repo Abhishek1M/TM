@@ -1,6 +1,6 @@
 /* 
  * File:   HSMMsg.h
- * Author: Abhishek1.M
+ * Author: Abhishek M
  *
  * Created on 8 February, 2017, 5:35 PM
  */
@@ -17,8 +17,8 @@
 #include <iostream>
 #include <string>
 
-#include <ap/constants.h>
-#include <ap/Utility.h>
+#include <constants.h>
+#include <Utility.h>
 
 using namespace Poco::JSON;
 using namespace Poco::Dynamic;

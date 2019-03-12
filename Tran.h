@@ -1,6 +1,6 @@
 /* 
  * File:   Tran.h
- * Author: Abhishek1.M
+ * Author: Abhishek M
  *
  * Created on 12 April, 2017, 3:15 PM
  */
@@ -13,9 +13,11 @@
 #include <Poco/NumberFormatter.h>
 #include <Poco/NumberParser.h>
 
-#include <ap/Iso8583JSON.h>
+#include <Iso8583JSON.h>
 
-#include <ap/Encrypt.h>
+#include <Encrypt.h>
+
+#include "Config.h"
 
 using Poco::NumberFormatter;
 using Poco::NumberParser;
@@ -121,8 +123,8 @@ void Tran::mapFromResultSet(pqxx::result rs) {
 
     pan = rs[0][70].as<string>(); // We get the Encrypted PAN so that we can decrypt it later
 
-    //Encrypt e;
-    pan = Config::e.decryptdata(pan);
+    Encrypt e;
+    pan = e.decryptdata(pan);
 
     tran_type = rs[0][3].as<string>();
     from_account = rs[0][4].as<string>();

@@ -10,7 +10,7 @@
 
 #include <Poco/Runnable.h>
 #include <Poco/Logger.h>
-#include <ap/Iso8583JSON.h>
+#include <Iso8583JSON.h>
 
 #include "Config.h"
 #include "TranMgrDBHandler.h"
@@ -43,7 +43,7 @@ public:
             } catch (exception &e) {
                 m_logger.error("Error processing transaction #ProcessTimeout");
                 m_logger.error(e.what());
-                
+
                 m_logger.error("Aborting transaction #");
                 Config::msg.pop();
             }
@@ -93,7 +93,10 @@ bool ProcessTimeout::processMsg(string data) {
         msg.setExtendedField(_007_TRAN_NR, tran_nr_s);
         msg.setExtendedField(_001_ACQ_NODE_KEY, tran_nr_s);
 
-        tmdbh.addToTrans(msg);
+        LocalDateTime now;
+        string req_in = Poco::DateTimeFormatter::format(now, "%Y-%m-%d %H:%M:%s");
+
+        bool dbstatus = tmdbh.addToTrans(msg, req_in);
     }
 
     NodeInfo ni(msg.getField(_122_NODE_INFO));
@@ -108,7 +111,13 @@ bool ProcessTimeout::processMsg(string data) {
 
             rsp = Utility::ofPostRequest(rt.getUrl(), msg.toMsg(), rt.getTimeout());
 
-            if ((rsp.compare("NOK") == 0) || (rsp.compare("TMO") == 0)) {
+            if (rsp.empty()) {
+                m_logger.error("No response from remote ");
+                msg.setField(_039_RSP_CODE, _91_ISSUER_OR_SWITCH_INOPERATIVE);
+
+                status = false;
+                revs--;
+            } else if ((rsp.compare("NOK") == 0) || (rsp.compare("TMO") == 0)) {
                 m_logger.error("Response from remote : " + rsp);
 
                 msg.setField(_039_RSP_CODE, _91_ISSUER_OR_SWITCH_INOPERATIVE);

@@ -5,53 +5,61 @@
 #include <string>
 
 #include <Poco/Logger.h>
+#include <Poco/DateTimeFormat.h>
+#include <Poco/DateTimeFormatter.h>
 
-#include <ap/constants.h>
-#include <ap/Utility.h>
-#include <ap/Iso8583JSON.h>
+#include <constants.h>
+#include <Utility.h>
+#include <Iso8583JSON.h>
 #include <pqxx/field.hxx>
 #include "DBManager.h"
 #include "Route.h"
-#include <ap/Encrypt.h>
+#include <Encrypt.h>
 #include "Config.h"
 #include "Tran.h"
+#include "MapKeyValue.h"
 
 using namespace std;
 
+using Poco::DateTimeFormat;
+using Poco::DateTimeFormatter;
 using Poco::Logger;
 using Poco::trim;
 
-class TranMgrDBHandler {
-public:
-
-    TranMgrDBHandler(Logger& logger) : td_logger(logger) {
+class TranMgrDBHandler
+{
+  public:
+    TranMgrDBHandler(Logger &logger) : td_logger(logger)
+    {
     }
 
     long getNewTranNr();
     string appendQueryParams(string value);
     string appendQueryParams(long value);
-    bool addToTrans(Iso8583JSON& msg);
-    bool updateTrans(Iso8583JSON& msg);
-    bool addTMDeclineToTrans(Iso8583JSON& msg);
-    bool getIssuerNode(Iso8583JSON& msg, Route& rt);
-    bool getExtdIssuerNode(Iso8583JSON& msg, Route& rt);
-    bool getTranInfo(string acq_node_key, Tran& tran);
+    bool addToTrans(Iso8583JSON &msg, string req_in);
+    bool updateTrans(Iso8583JSON &msg);
+    bool addTMDeclineToTrans(Iso8583JSON &msg);
+    bool getIssuerNode(Iso8583JSON &msg, Route &rt);
+    bool getExtdIssuerNode(Iso8583JSON &msg, Route &rt);
+    bool getTranInfo(string acq_node_key, Tran &tran);
     bool updatereversal(string tran_nr);
     bool updateadjustment(string tran_nr);
-    bool getrouteinfo(string issuer_node_name, Route& rt);
+    bool getrouteinfo(string issuer_node_name, Route &rt);
 
-private:
-    Logger& td_logger;
+  private:
+    Logger &td_logger;
 };
 
 //////////////////////////////////////////////////////////////////////////
 
-long TranMgrDBHandler::getNewTranNr() {
+long TranMgrDBHandler::getNewTranNr()
+{
     pqxx::connection c(Config::dburl);
 
-    string query = "select nextval('onl_trans_trannr');";
+    string query = "select nextval('trans_trannr');";
 
-    if (!c.is_open()) {
+    if (!c.is_open())
+    {
         td_logger.fatal("getNewTranNr - Could not connect to database");
         return 0;
     }
@@ -62,7 +70,8 @@ long TranMgrDBHandler::getNewTranNr() {
     // Execute query
     pqxx::result r = txn.exec(query);
 
-    if (r.size() != 1) {
+    if (r.size() != 1)
+    {
         return 0;
     }
 
@@ -75,25 +84,37 @@ long TranMgrDBHandler::getNewTranNr() {
 
 //////////////////////////////////////////////////////////////////////////
 
-bool TranMgrDBHandler::addToTrans(Iso8583JSON& msg) {
-    try {
+bool TranMgrDBHandler::addToTrans(Iso8583JSON &msg, string req_in)
+{
+    try
+    {
         pqxx::connection c(Config::dburl);
 
-        if (!c.is_open()) {
+        if (!c.is_open())
+        {
             td_logger.fatal("addToTrans - Could not connect to database");
-            return 0;
+            return false;
         }
 
         pqxx::work txn(c);
 
         string enc_pan;
 
-        if (msg.isFieldSet(_002_PAN)) {
-            //Encrypt e;
+        if (msg.isFieldSet(_002_PAN))
+        {
             enc_pan = Config::e.encryptdata(msg.getField(_002_PAN));
         }
+        else
+        {
+            enc_pan = "NA";
+        }
 
-        string query = "insert into onl_trans (tran_nr, mti, pan, tran_type, from_account, to_account, amount_tran, amount_stl, amount_chb, datetime_trans, fee_amount_chb, convrate_stl, convrate_chb, stan, time_local, date_local, date_exp, date_stl, date_conv, date_capture, merchant_type, countrycode_acqinstt, countrycode_panextd, countrycode_fwsinstt, pos_entry_mode, app_pan_nr, nii, pos_cond_code, pos_capture_code, auth_id_rsp_len, fee_amount_tran, fee_amount_stl, proc_fee_amount_tran, proc_fee_amount_stl, acq_instt_code, fwd_instt_id, extd_pan, retr_ref_nr, auth_id_rsp, rsp_code, service_rest_code, ca_term_id, ca_id_code, ca_name_loc, addl_rsp_data, addl_data_private, currencycode_tran, currencycode_stl, currencycode_chb, amount_cash, emv_request, emv_response, advice_reason_code, pos_data, settlement_code, extd_payment_code, countrycode_rcvinstt, countrycode_stlinstt, payee, stl_instt_id_code, rcv_instt_id_code, account_id_1, account_id_2, trans_data_req, trans_data_rsp, acquirer_node, issuer_node, super_merchant_id, routing_info, tran_state, pan_encrypted, req_in, req_out, rsp_in, rsp_out, acq_node_key, prev_trannr, transaction_id, term_batch_nr, acq_node_batch_nr, prev_acq_node_key,acq_part_name,retailer_id, store_id, device_id, org_type) values (";
+        td_logger.trace("Encrypted PAN");
+        td_logger.trace(enc_pan);
+
+        string query = "insert into transactions (tran_nr, mti, pan, tran_type, from_account, to_account, amount_tran, amount_stl, amount_chb, datetime_trans, fee_amount_chb, convrate_stl, convrate_chb, stan, time_local, date_local, date_exp, date_stl, date_conv, date_capture, merchant_type, countrycode_acqinstt, countrycode_panextd, countrycode_fwsinstt, pos_entry_mode, app_pan_nr, nii, pos_cond_code, pos_capture_code, auth_id_rsp_len, fee_amount_tran, fee_amount_stl, proc_fee_amount_tran, proc_fee_amount_stl, acq_instt_code, fwd_instt_id, extd_pan, retr_ref_nr, auth_id_rsp, rsp_code, service_rest_code, ca_term_id, ca_id_code, ca_name_loc, addl_rsp_data, addl_data_private, currencycode_tran, currencycode_stl, currencycode_chb, amount_cash, emv_request, emv_response, advice_reason_code, pos_data, settlement_code, extd_payment_code, countrycode_rcvinstt, countrycode_stlinstt, payee, stl_instt_id_code, rcv_instt_id_code, account_id_1, account_id_2, trans_data_req, trans_data_rsp, acquirer_node, issuer_node, super_merchant_id, routing_info, tran_state, pan_encrypted, req_in, req_out, rsp_in, rsp_out, acq_node_key, prev_trannr, transaction_id, term_batch_nr, acq_node_batch_nr, prev_acq_node_key,acq_part_name,retailer_id, store_id, device_id, org_type) values (";
+
+        td_logger.debug(query);
 
         query.append(appendQueryParams(msg.getExtendedField(7)));
         query.append(appendQueryParams(msg.getMsgType()));
@@ -166,13 +187,20 @@ bool TranMgrDBHandler::addToTrans(Iso8583JSON& msg) {
         query.append(appendQueryParams(msg.getNodeInfo().getRoutingInfo()));
         query.append(appendQueryParams(_001_TRAN_COMPLETE));
         query.append(appendQueryParams(enc_pan));
-        query.append("now(),");
-        query.append("now(),");
+
+        req_in = "'" + req_in + "',";
+        query.append(req_in);
+
+        td_logger.debug(query);
+
+        LocalDateTime now;
+        string req_out = Poco::DateTimeFormatter::format(now, "'%Y-%m-%d %H:%M:%s',");
+        query.append(req_out);
         query.append("now(),");
         query.append("now(),");
         query.append(appendQueryParams(msg.getExtendedField(_001_ACQ_NODE_KEY)));
         query.append(appendQueryParams(
-                NumberFormatter::format(Utility::convertolong(msg.getExtendedField(_009_PREV_TRAN_NR)))));
+            NumberFormatter::format(Utility::convertolong(msg.getExtendedField(_009_PREV_TRAN_NR)))));
         query.append(appendQueryParams(msg.getField(_062_TRANS_ID)));
         query.append(appendQueryParams(msg.getExtendedField(_006_TERM_BATCH_NR)));
         query.append(appendQueryParams("000"));
@@ -190,8 +218,10 @@ bool TranMgrDBHandler::addToTrans(Iso8583JSON& msg) {
         txn.commit();
 
         c.disconnect();
-    } catch (exception &e) {
-        td_logger.error(e.what());
+    }
+    catch (...)
+    {
+        //td_logger.error(e.what());
         return false;
     }
     return true;
@@ -199,18 +229,21 @@ bool TranMgrDBHandler::addToTrans(Iso8583JSON& msg) {
 
 //////////////////////////////////////////////////////////////////////////
 
-bool TranMgrDBHandler::updateTrans(Iso8583JSON& msg) {
-    try {
+bool TranMgrDBHandler::updateTrans(Iso8583JSON &msg)
+{
+    try
+    {
         pqxx::connection c(Config::dburl);
 
-        if (!c.is_open()) {
+        if (!c.is_open())
+        {
             td_logger.fatal("updateTrans - Could not connect to database");
             return false;
         }
 
         pqxx::work txn(c);
 
-        string query = "update onl_trans set "; //retr_ref_nr=xretr_ref_nr  where tran_nr = xtran_nr;";
+        string query = "update transactions set "; //retr_ref_nr=xretr_ref_nr  where tran_nr = xtran_nr;";
 
         query.append("amount_stl=" + NumberFormatter::format(Utility::convertolong(msg.getField(_005_AMOUNT_SETTLE))) + ",");
         query.append("amount_chb=" + NumberFormatter::format(Utility::convertolong(msg.getField(_006_AMOUNT_CARDHOLDER_BILL))) + ",");
@@ -239,7 +272,9 @@ bool TranMgrDBHandler::updateTrans(Iso8583JSON& msg) {
         txn.commit();
 
         c.disconnect();
-    } catch (exception &e) {
+    }
+    catch (exception &e)
+    {
         td_logger.error(e.what());
         return false;
     }
@@ -248,10 +283,14 @@ bool TranMgrDBHandler::updateTrans(Iso8583JSON& msg) {
 
 //////////////////////////////////////////////////////////////////////////
 
-bool TranMgrDBHandler::addTMDeclineToTrans(Iso8583JSON& msg) {
-    try {
+bool TranMgrDBHandler::addTMDeclineToTrans(Iso8583JSON &msg)
+{
+    try
+    {
         pqxx::connection c(Config::dburl);
-        if (!c.is_open()) {
+
+        if (!c.is_open())
+        {
             td_logger.fatal("addTMDeclineToTrans - Could not connect to database");
             return false;
         }
@@ -259,12 +298,13 @@ bool TranMgrDBHandler::addTMDeclineToTrans(Iso8583JSON& msg) {
 
         string enc_pan;
 
-        if (msg.isFieldSet(_002_PAN)) {
-            //Encrypt e;
-            enc_pan = Config::e.encryptdata(msg.getField(_002_PAN));
+        if (msg.isFieldSet(_002_PAN))
+        {
+            Encrypt e;
+            enc_pan = e.encryptdata(msg.getField(_002_PAN));
         }
 
-        string query = "insert into onl_trans (tran_nr, mti, pan, tran_type, from_account, to_account, amount_tran, amount_stl, amount_chb, datetime_trans, fee_amount_chb, convrate_stl, convrate_chb, stan, time_local, date_local, date_exp, date_stl, date_conv, date_capture, merchant_type, countrycode_acqinstt, countrycode_panextd, countrycode_fwsinstt, pos_entry_mode, app_pan_nr, nii, pos_cond_code, pos_capture_code, auth_id_rsp_len, fee_amount_tran, fee_amount_stl, proc_fee_amount_tran, proc_fee_amount_stl, acq_instt_code, fwd_instt_id, extd_pan, retr_ref_nr, auth_id_rsp, rsp_code, service_rest_code, ca_term_id, ca_id_code, ca_name_loc, addl_rsp_data, addl_data_private, currencycode_tran, currencycode_stl, currencycode_chb, amount_cash, emv_request, emv_response, advice_reason_code, pos_data, settlement_code, extd_payment_code, countrycode_rcvinstt, countrycode_stlinstt, payee, stl_instt_id_code, rcv_instt_id_code, account_id_1, account_id_2, trans_data_req, trans_data_rsp, acquirer_node, issuer_node, super_merchant_id, routing_info, tran_state, pan_encrypted, req_in, req_out, rsp_in, rsp_out, acq_node_key, prev_trannr, transaction_id, term_batch_nr, acq_node_batch_nr, prev_acq_node_key,acq_part_name,retailer_id, store_id, device_id, org_type) values (";
+        string query = "insert into transactions (tran_nr, mti, pan, tran_type, from_account, to_account, amount_tran, amount_stl, amount_chb, datetime_trans, fee_amount_chb, convrate_stl, convrate_chb, stan, time_local, date_local, date_exp, date_stl, date_conv, date_capture, merchant_type, countrycode_acqinstt, countrycode_panextd, countrycode_fwsinstt, pos_entry_mode, app_pan_nr, nii, pos_cond_code, pos_capture_code, auth_id_rsp_len, fee_amount_tran, fee_amount_stl, proc_fee_amount_tran, proc_fee_amount_stl, acq_instt_code, fwd_instt_id, extd_pan, retr_ref_nr, auth_id_rsp, rsp_code, service_rest_code, ca_term_id, ca_id_code, ca_name_loc, addl_rsp_data, addl_data_private, currencycode_tran, currencycode_stl, currencycode_chb, amount_cash, emv_request, emv_response, advice_reason_code, pos_data, settlement_code, extd_payment_code, countrycode_rcvinstt, countrycode_stlinstt, payee, stl_instt_id_code, rcv_instt_id_code, account_id_1, account_id_2, trans_data_req, trans_data_rsp, acquirer_node, issuer_node, super_merchant_id, routing_info, tran_state, pan_encrypted, req_in, req_out, rsp_in, rsp_out, acq_node_key, prev_trannr, transaction_id, term_batch_nr, acq_node_batch_nr, prev_acq_node_key,acq_part_name,retailer_id, store_id, device_id, org_type) values (";
 
         query.append(appendQueryParams(msg.getExtendedField(7)));
         query.append(appendQueryParams(msg.getMsgType()));
@@ -343,7 +383,7 @@ bool TranMgrDBHandler::addTMDeclineToTrans(Iso8583JSON& msg) {
         query.append("now(),");
         query.append(appendQueryParams(msg.getExtendedField(1)));
         query.append(appendQueryParams(
-                NumberFormatter::format(Utility::convertolong(msg.getExtendedField(_009_PREV_TRAN_NR)))));
+            NumberFormatter::format(Utility::convertolong(msg.getExtendedField(_009_PREV_TRAN_NR)))));
         query.append(appendQueryParams(msg.getField(_062_TRANS_ID)));
         query.append(appendQueryParams(msg.getExtendedField(6)));
         query.append(appendQueryParams("0"));
@@ -361,7 +401,9 @@ bool TranMgrDBHandler::addTMDeclineToTrans(Iso8583JSON& msg) {
         txn.commit();
 
         c.disconnect();
-    } catch (exception &e) {
+    }
+    catch (exception &e)
+    {
         td_logger.error(e.what());
         return false;
     }
@@ -369,13 +411,15 @@ bool TranMgrDBHandler::addTMDeclineToTrans(Iso8583JSON& msg) {
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
-string TranMgrDBHandler::appendQueryParams(string value) {
+string TranMgrDBHandler::appendQueryParams(string value)
+{
     value = "'" + value + "',";
     return value;
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
-string TranMgrDBHandler::appendQueryParams(long value) {
+string TranMgrDBHandler::appendQueryParams(long value)
+{
     string strValue = NumberFormatter::format(value);
     strValue = "'" + strValue + "',";
     return strValue;
@@ -383,10 +427,12 @@ string TranMgrDBHandler::appendQueryParams(long value) {
 
 //////////////////////////////////////////////////////////////////////////
 
-bool TranMgrDBHandler::getIssuerNode(Iso8583JSON& msg, Route& rt) {
+bool TranMgrDBHandler::getIssuerNode(Iso8583JSON &msg, Route &rt)
+{
     pqxx::connection c(Config::dburl);
 
-    if (!c.is_open()) {
+    if (!c.is_open())
+    {
         td_logger.fatal("getIssuerNode - Could not connect to database");
 
         msg.setField(_039_RSP_CODE, _96_SYSTEM_MALFUNCTION);
@@ -397,11 +443,14 @@ bool TranMgrDBHandler::getIssuerNode(Iso8583JSON& msg, Route& rt) {
     NodeInfo ni(msg.getNodeInfo());
     string acquirer_node(ni.getAcquirerNode());
 
-    if (acquirer_node == NULL) {
+    if (acquirer_node == NULL)
+    {
         msg.setField(_039_RSP_CODE, _92_ROUTING_ERROR);
         c.disconnect();
         return false;
-    } else if (acquirer_node.length() == 0) {
+    }
+    else if (acquirer_node.length() == 0)
+    {
         msg.setField(_039_RSP_CODE, _92_ROUTING_ERROR);
         c.disconnect();
         return false;
@@ -410,7 +459,37 @@ bool TranMgrDBHandler::getIssuerNode(Iso8583JSON& msg, Route& rt) {
     acquirer_node = trim(acquirer_node);
     string pan = msg.getField(_002_PAN).substr(0, 12);
 
-    string query = "select rt_issuer_node, bin_owner, crdbflag, card_country, c.pname, timeout, acq_instt_id, fwd_instt_id, iss_keyname, connurl,repeat_reversal from getissnode('" + acquirer_node + "','" + pan + "')  a left join onl_iss_nodes b on a.rt_issuer_node=b.iss_node_name left join onl_process c on b.pname=c.pname;";
+    //    string query = "select rt_issuer_node, bin_owner, crdbflag, card_country, c.pname, "
+    //            "timeout, acq_instt_id, fwd_instt_id, iss_keyname, connurl,repeat_reversal "
+    //            "from getissnode('" + acquirer_node + "','" + pan + "')  a "
+    //            "left join issuer_nodes b on a.rt_issuer_node=b.iss_node_name "
+    //            "left join interface c on b.pname=c.pname;";
+
+    string query = "select rt.rt_issuer_node, "
+                   "bin.bin_owner,"
+                   "bin.crdbflag, "
+                   "bin.card_country, "
+                   "c.pname, "
+                   "timeout, "
+                   "acq_instt_id, "
+                   "fwd_instt_id, "
+                   "iss_keyname, "
+                   "connurl,"
+                   "repeat_reversal, "
+                   "bin.card_type, "
+                   "bin.description, "
+                   "bin.bank_name "
+                   "from bins bin inner join routes rt on bin.bin_owner=rt.rt_bin_owner "
+                   "inner join issuer_nodes b on rt_issuer_node=b.iss_node_name "
+                   "inner join interface c on b.pname=c.pname "
+                   "where "
+                   "bin_range_low <= '" +
+                   pan + "' and "
+                         "bin_range_high >= '" +
+                   pan + "' and "
+                         "rt.rt_acq_node_name='" +
+                   acquirer_node + "' "
+                                   "order by rt_bl_priority limit 1;";
 
     // Create a non-transactional object
     pqxx::work txn(c);
@@ -418,7 +497,8 @@ bool TranMgrDBHandler::getIssuerNode(Iso8583JSON& msg, Route& rt) {
     // Execute query
     pqxx::result r = txn.exec(query);
 
-    if (r.size() == 0) {
+    if (r.size() == 0)
+    {
         msg.setField(_039_RSP_CODE, _92_ROUTING_ERROR);
         c.disconnect();
         return false;
@@ -438,16 +518,29 @@ bool TranMgrDBHandler::getIssuerNode(Iso8583JSON& msg, Route& rt) {
 
     msg.setField(_122_NODE_INFO, ni.getNodeInfo());
 
+    MapKeyValue mkv;
+    mkv.put("bin_owner", r[0][1].as<string>());
+    mkv.put("card_country", r[0][3].as<string>());
+    mkv.put("bank_name", r[0][13].as<string>());
+    mkv.put("description", r[0][12].as<string>());
+    mkv.put("card_type", r[0][11].as<string>());
+    mkv.put("crdbflag", r[0][2].as<string>());
+
+    string tran_req = msg.getField(_120_TRAN_DATA_REQ) + mkv.toMsg();
+    msg.setField(_120_TRAN_DATA_REQ, tran_req);
+
     c.disconnect();
 
     return true;
 }
 //////////////////////////////////////////////////////////////////////////
 
-bool TranMgrDBHandler::getExtdIssuerNode(Iso8583JSON& msg, Route& rt) {
+bool TranMgrDBHandler::getExtdIssuerNode(Iso8583JSON &msg, Route &rt)
+{
 
     pqxx::connection c(Config::dburl);
-    if (!c.is_open()) {
+    if (!c.is_open())
+    {
         td_logger.fatal("getExtdIssuerNode - Could not connect to database");
         msg.setField(_039_RSP_CODE, _96_SYSTEM_MALFUNCTION);
 
@@ -458,29 +551,36 @@ bool TranMgrDBHandler::getExtdIssuerNode(Iso8583JSON& msg, Route& rt) {
     string acquirer_node(ni.getAcquirerNode());
     string extd_code(msg.getField(_067_EXTENDED_PAYMENT_CODE));
 
-    if (acquirer_node == NULL) {
+    if (acquirer_node == NULL)
+    {
         return false;
-    } else if (acquirer_node.length() == 0) {
+    }
+    else if (acquirer_node.length() == 0)
+    {
         return false;
     }
 
-    if (extd_code == NULL) {
+    if (extd_code == NULL)
+    {
         return false;
-    } else if (extd_code.length() == 0) {
+    }
+    else if (extd_code.length() == 0)
+    {
         return false;
     }
 
     acquirer_node = trim(acquirer_node);
     extd_code = trim(extd_code);
 
-    string query = "select issuer_node, bin_owner, c.pname, timeout, acq_instt_id, fwd_instt_id, iss_keyname, connurl from onl_routes_extd a left join onl_iss_nodes b on a.issuer_node=b.iss_node_name left join onl_process c on b.pname=c.pname where acquirer_node='" + acquirer_node + "' and extd_payment_code='" + extd_code + "'  limit 1";
+    string query = "select issuer_node, bin_owner, c.pname, timeout, acq_instt_id, fwd_instt_id, iss_keyname, connurl from routes_extd a left join issuer_nodes b on a.issuer_node=b.iss_node_name left join interface c on b.pname=c.pname where acquirer_node='" + acquirer_node + "' and extd_payment_code='" + extd_code + "'  limit 1";
     // Create a non-transactional object
     pqxx::work txn(c);
 
     // Execute query
     pqxx::result r = txn.exec(query);
 
-    if (r.size() == 0) {
+    if (r.size() == 0)
+    {
         c.disconnect();
         return false;
     }
@@ -504,10 +604,13 @@ bool TranMgrDBHandler::getExtdIssuerNode(Iso8583JSON& msg, Route& rt) {
 }
 ///////////////////////////////////////////////////////////////////////////////
 
-bool TranMgrDBHandler::getTranInfo(string acq_node_key, Tran& tran) {
-    try {
+bool TranMgrDBHandler::getTranInfo(string acq_node_key, Tran &tran)
+{
+    try
+    {
         pqxx::connection c(Config::dburl);
-        if (!c.is_open()) {
+        if (!c.is_open())
+        {
             td_logger.fatal("getTranInfo - Could not connect to database");
             return false;
         }
@@ -519,7 +622,8 @@ bool TranMgrDBHandler::getTranInfo(string acq_node_key, Tran& tran) {
         // Execute query
         pqxx::result r = txn.exec(sql);
 
-        if (r.size() == 0) {
+        if (r.size() == 0)
+        {
             c.disconnect();
             tran.tran_nr = 0;
             return false;
@@ -530,7 +634,9 @@ bool TranMgrDBHandler::getTranInfo(string acq_node_key, Tran& tran) {
         c.disconnect();
 
         return true;
-    } catch (exception &e) {
+    }
+    catch (exception &e)
+    {
         td_logger.error(e.what());
     }
 
@@ -538,14 +644,18 @@ bool TranMgrDBHandler::getTranInfo(string acq_node_key, Tran& tran) {
 }
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TranMgrDBHandler::updatereversal(string tran_nr) {
-    try {
+bool TranMgrDBHandler::updatereversal(string tran_nr)
+{
+    try
+    {
         pqxx::connection c(Config::dburl);
-        if (!c.is_open()) {
+
+        if (!c.is_open())
+        {
             td_logger.fatal("updatereversal - Could not connect to database");
             return false;
         }
-        string sql = "update onl_trans set isreversed='Y' where tran_nr=" + tran_nr + ";";
+        string sql = "update transactions set isreversed='Y' where tran_nr=" + tran_nr + ";";
 
         // Create a non-transactional object
         pqxx::work txn(c);
@@ -557,7 +667,9 @@ bool TranMgrDBHandler::updatereversal(string tran_nr) {
         c.disconnect();
 
         return true;
-    } catch (exception &e) {
+    }
+    catch (exception &e)
+    {
         td_logger.error(e.what());
     }
 
@@ -565,14 +677,18 @@ bool TranMgrDBHandler::updatereversal(string tran_nr) {
 }
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TranMgrDBHandler::updateadjustment(string tran_nr) {
-    try {
+bool TranMgrDBHandler::updateadjustment(string tran_nr)
+{
+    try
+    {
         pqxx::connection c(Config::dburl);
-        if (!c.is_open()) {
+
+        if (!c.is_open())
+        {
             td_logger.fatal("updateadjustment - Could not connect to database");
             return false;
         }
-        string sql = "update onl_trans set isadjusted='Y' where tran_nr=" + tran_nr + ";";
+        string sql = "update transactions set isadjusted='Y' where tran_nr=" + tran_nr + ";";
 
         // Create a non-transactional object
         pqxx::work txn(c);
@@ -584,7 +700,9 @@ bool TranMgrDBHandler::updateadjustment(string tran_nr) {
         c.disconnect();
 
         return true;
-    } catch (exception &e) {
+    }
+    catch (exception &e)
+    {
         td_logger.error(e.what());
     }
 
@@ -592,11 +710,13 @@ bool TranMgrDBHandler::updateadjustment(string tran_nr) {
 }
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TranMgrDBHandler::getrouteinfo(string issuer_node_name, Route& rt) {
-    string query = "select a.pname, a.timeout, b.connurl, '',repeat_reversal from onl_iss_nodes a left join onl_process b on a.pname=b.pname where a.iss_node_name='" + issuer_node_name + "';";
+bool TranMgrDBHandler::getrouteinfo(string issuer_node_name, Route &rt)
+{
+    string query = "select a.pname, a.timeout, b.connurl, '',repeat_reversal from issuer_nodes a left join interface b on a.pname=b.pname where a.iss_node_name='" + issuer_node_name + "';";
 
     pqxx::connection c(Config::dburl);
-    if (!c.is_open()) {
+    if (!c.is_open())
+    {
         td_logger.fatal("getrouteinfo - Could not connect to database");
         return false;
     }
@@ -606,7 +726,8 @@ bool TranMgrDBHandler::getrouteinfo(string issuer_node_name, Route& rt) {
     // Execute query
     pqxx::result r = txn.exec(query);
 
-    if (r.size() == 0) {
+    if (r.size() == 0)
+    {
         c.disconnect();
         return false;
     }
