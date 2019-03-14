@@ -49,6 +49,7 @@
 #include "ProcessTimeout.h"
 #include "Worker.h"
 #include "WorkerThreadPool.h"
+#include "UpdateTransactionsInDB.h"
 
 using namespace Poco::Net;
 using namespace Poco::Util;
@@ -90,6 +91,7 @@ string Config::keypath;
 
 //
 queue<string> Config::msg;
+queue<WriteToDBEntity> Config::commit_db;
 //
 Encrypt Config::e;
 ///////////////////////////////////////////////////////////////////////////////
@@ -580,9 +582,7 @@ bool TMRequestHandler::isValidMsg(Iso8583JSON &msg)
             return false;
         }
     }
-    else
-
-        if (msg.getMsgType().compare(_0220_TRAN_ADV) == 0)
+    else if (msg.getMsgType().compare(_0220_TRAN_ADV) == 0)
     {
         // Check for MTI = 0220
         if (!msg.isFieldSet(_003_PROCESSING_CODE))
@@ -808,7 +808,8 @@ string TMRequestHandler::processMsg(string request)
 
             rrn = NumberFormatter::format0(tran_nr, 12);
             msg.setExtendedField(_007_TRAN_NR, rrn);
-        }else
+        }
+        else
         {
             rrn = msg.getExtendedField(_007_TRAN_NR);
             rrn = Utility::resize(rrn, 12, "0", false);
@@ -1016,7 +1017,7 @@ class TMServerApp : public ServerApplication
 
             AutoPtr<FileChannel> pChannel(new FileChannel);
             AutoPtr<PatternFormatter> pPF(new PatternFormatter);
-            pPF->setProperty("pattern", "%Y-%m-%d %H:%M:%S %s: %t");
+            pPF->setProperty("pattern", "%Y-%m-%d %H:%M:%S:%i - [%p] - %s-%T-%I: %t");
             pPF->setProperty("times", times);
 
             pChannel->setProperty("path", path);
@@ -1076,6 +1077,10 @@ class TMServerApp : public ServerApplication
             ProcessTimeout pto(logger);
             Poco::Thread th_pto;
             th_pto.start(pto);
+
+            UpdateTransactionsInDB updtransindb(logger);
+            Poco::Thread th_upddb;
+            th_upddb.start(updtransindb);
 
             HTTPServerParams *pParams = new HTTPServerParams;
             pParams->setKeepAlive(false);

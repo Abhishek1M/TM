@@ -8,13 +8,16 @@
 #include <pqxx/field.hxx>
 #include <pqxx/connection_base.hxx>
 
+#include "WriteToDBEntity.h"
+
 using namespace std;
 
 #ifndef CONFIG_H
 #define CONFIG_H
 
-class Config {
-public:
+class Config
+{
+  public:
     static string hsmurl;
     static string dburl;
     static string mq;
@@ -25,27 +28,37 @@ public:
     static string keypath;
     //
     static queue<string> msg;
+    static queue<WriteToDBEntity> commit_db;
     //
     //
     static map<string, int> timeOffset;
     static Encrypt e;
+    // constants
+    static const int _INSERT_TRANS = 0;
+    static const int _UPDATE_TRANS = 1;
+    static const int _INSERT_TRANS_DECLINED = 2;
+    static const int _UPDATE_REVERSAL = 3;
+    static const int _UPDATE_ADJUSTED = 4;
     // methods
     static bool loadTimeOffset();
 };
 
 ////////////////////////////////////////////////////////////////////////
 
-bool Config::loadTimeOffset() {
+bool Config::loadTimeOffset()
+{
     pqxx::connection c(Config::dburl);
     string query = "select code_alpha_2, timeoffset from countries ";
 
-    Application& app = Application::instance();
-    Logger& lgr = app.logger().get(moduleName);
+    Application &app = Application::instance();
+    Logger &lgr = app.logger().get(moduleName);
 
-    try {
-        if (!c.is_open()) {
+    try
+    {
+        if (!c.is_open())
+        {
             lgr.fatal("loadTimeOffset - Could not connect to database");
-            
+
             return false;
         }
 
@@ -55,12 +68,16 @@ bool Config::loadTimeOffset() {
         // Execute query
         pqxx::result r = txn.exec(query);
 
-        if (r.size() == 0) {
+        if (r.size() == 0)
+        {
             c.disconnect();
-        } else {
+        }
+        else
+        {
             timeOffset.clear();
 
-            for (pqxx::result::const_iterator row = r.begin(); row != r.end(); ++row) {
+            for (pqxx::result::const_iterator row = r.begin(); row != r.end(); ++row)
+            {
                 // Fields within a row can be accessed by column name.
                 // You can also iterate the fields in a row, or index the row
                 // by column number just like an array.
@@ -72,14 +89,15 @@ bool Config::loadTimeOffset() {
         }
 
         c.disconnect();
-    } catch (Poco::Exception ex) {
+    }
+    catch (Poco::Exception ex)
+    {
         lgr.error(ex.message());
-        
+
         return false;
     }
-    
+
     return true;
 }
-
 
 #endif

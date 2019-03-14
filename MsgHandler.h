@@ -17,6 +17,7 @@
 #include "HSMKeyMgmt.h"
 #include "Track2.h"
 #include "constants.h"
+#include "WriteToDBEntity.h"
 
 using namespace std;
 
@@ -98,13 +99,10 @@ bool MsgHandler::processFinMsg(Iso8583JSON &msg, TranMgrDBHandler tmdbh)
 
             return false;
         }
-
-        td_logger.trace("Routing done");
     }
 
     // Update date/time in F073
     updateDateTime(msg);
-    td_logger.trace("updateDateTime");
 
     // Fill in Card Country details
 
@@ -121,7 +119,6 @@ bool MsgHandler::processFinMsg(Iso8583JSON &msg, TranMgrDBHandler tmdbh)
 
         return false;
     }
-    td_logger.trace("#fallback - check done");
 
     // Perform ICA Check
 
@@ -144,8 +141,10 @@ bool MsgHandler::processFinMsg(Iso8583JSON &msg, TranMgrDBHandler tmdbh)
             return false;
         }
     }
-    td_logger.trace("pin translation check - done");
 
+    WriteToDBEntity w(msg.toMsg(), req_in, req_in, req_in, req_in, Config::_INSERT_TRANS);
+    Config::commit_db.push(w);
+    /*
     dbstatus = tmdbh.addToTrans(msg, req_in);
     if (dbstatus == false)
     {
@@ -158,6 +157,7 @@ bool MsgHandler::processFinMsg(Iso8583JSON &msg, TranMgrDBHandler tmdbh)
 
         return false;
     }
+*/
 
     td_logger.debug("URL - " + rt.getUrl());
     td_logger.debug("Issuer Key Name - " + rt.getisskeyname());
@@ -180,16 +180,8 @@ bool MsgHandler::processFinMsg(Iso8583JSON &msg, TranMgrDBHandler tmdbh)
         td_logger.warning(rsp);
         td_logger.warning("Issuer/Process not available (NOK) - " + rt.getPname() + "(" + rt.getUrl() + ")");
 
-        dbstatus = tmdbh.updateTrans(msg);
-        if (dbstatus == false)
-        {
-            msg.setRspMsgType();
-            msg.setField(_039_RSP_CODE, _96_SYSTEM_MALFUNCTION);
-            clearRespFields(msg);
-            td_logger.error("DB entry unsuccessful \n" + msg.dumpMsg());
-
-            return false;
-        }
+        WriteToDBEntity wunok(msg.toMsg(), req_in, req_in, req_in, req_in, Config::_UPDATE_TRANS);
+        Config::commit_db.push(wunok);
 
         msg.setRspMsgType();
 
@@ -206,15 +198,8 @@ bool MsgHandler::processFinMsg(Iso8583JSON &msg, TranMgrDBHandler tmdbh)
         td_logger.warning(rsp);
         td_logger.warning("Issuer/Process not available (TMO) - " + rt.getPname() + "(" + rt.getUrl() + ")");
 
-        dbstatus = tmdbh.updateTrans(msg);
-        if (dbstatus == false)
-        {
-            msg.setField(_039_RSP_CODE, _96_SYSTEM_MALFUNCTION);
-            clearRespFields(msg);
-            td_logger.error("DB entry unsuccessful \n" + msg.dumpMsg());
-
-            return false;
-        }
+        WriteToDBEntity wutmo(msg.toMsg(), req_in, req_in, req_in, req_in, Config::_UPDATE_TRANS);
+        Config::commit_db.push(wutmo);
 
         msg.setRspMsgType();
 
@@ -267,6 +252,9 @@ bool MsgHandler::processFinMsg(Iso8583JSON &msg, TranMgrDBHandler tmdbh)
     msg.setField(_103_ACCOUNT_ID_2, msg_from_issuer.getField(_103_ACCOUNT_ID_2));
     msg.setField(_121_TRAN_DATA_RSP, msg_from_issuer.getField(_121_TRAN_DATA_RSP));
 
+    WriteToDBEntity wu(msg.toMsg(), req_in, req_in, req_in, req_in, Config::_UPDATE_TRANS);
+    Config::commit_db.push(wu);
+    /*
     dbstatus = tmdbh.updateTrans(msg);
     if (dbstatus == false)
     {
@@ -276,7 +264,7 @@ bool MsgHandler::processFinMsg(Iso8583JSON &msg, TranMgrDBHandler tmdbh)
         td_logger.warning("DB entry unsuccessful \n" + msg.dumpMsg());
 
         return false;
-    }
+    }*/
 
     return true;
 }
@@ -290,13 +278,13 @@ bool MsgHandler::process0220Msg(Iso8583JSON &msg, TranMgrDBHandler tmdbh)
     LocalDateTime now;
     string req_in = Poco::DateTimeFormatter::format(now, "%Y-%m-%d %H:%M:%s");
 
-    // check if valid Reversal request, ACQNODEKEY
+    // check if valid transaction request, ACQNODEKEY
     if (!msg.isExtendedFieldSet(_002_ORG_ACQ_NODE_KEY))
     {
         return processFinMsg(msg, tmdbh);
     }
 
-    // Check for repeat reversal
+    // Check for repeat transaction
     Tran tran_rev;
 
     fetchdata = tmdbh.getTranInfo(msg.getExtendedField(_001_ACQ_NODE_KEY), tran_rev);
@@ -362,7 +350,7 @@ bool MsgHandler::process0220Msg(Iso8583JSON &msg, TranMgrDBHandler tmdbh)
 
     msg_to_iss_node.setExtendedField(_007_TRAN_NR, msg.getExtendedField(_007_TRAN_NR));
 
-    bool dbstatus = tmdbh.addToTrans(msg, req_in);
+    bool dbstatus = tmdbh.addToTrans(msg_to_iss_node, req_in);
 
     if (dbstatus == false)
     {
@@ -614,7 +602,7 @@ bool MsgHandler::process0420Msg(Iso8583JSON &msg, TranMgrDBHandler tmdbh)
 
     msg_to_iss_node.setExtendedField(_007_TRAN_NR, msg.getExtendedField(_007_TRAN_NR));
 
-    bool dbstatus = tmdbh.addToTrans(msg, req_in);
+    bool dbstatus = tmdbh.addToTrans(msg_to_iss_node, req_in);
 
     if (dbstatus == false)
     {

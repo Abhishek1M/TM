@@ -109,12 +109,7 @@ bool TranMgrDBHandler::addToTrans(Iso8583JSON &msg, string req_in)
             enc_pan = "NA";
         }
 
-        td_logger.trace("Encrypted PAN");
-        td_logger.trace(enc_pan);
-
         string query = "insert into transactions (tran_nr, mti, pan, tran_type, from_account, to_account, amount_tran, amount_stl, amount_chb, datetime_trans, fee_amount_chb, convrate_stl, convrate_chb, stan, time_local, date_local, date_exp, date_stl, date_conv, date_capture, merchant_type, countrycode_acqinstt, countrycode_panextd, countrycode_fwsinstt, pos_entry_mode, app_pan_nr, nii, pos_cond_code, pos_capture_code, auth_id_rsp_len, fee_amount_tran, fee_amount_stl, proc_fee_amount_tran, proc_fee_amount_stl, acq_instt_code, fwd_instt_id, extd_pan, retr_ref_nr, auth_id_rsp, rsp_code, service_rest_code, ca_term_id, ca_id_code, ca_name_loc, addl_rsp_data, addl_data_private, currencycode_tran, currencycode_stl, currencycode_chb, amount_cash, emv_request, emv_response, advice_reason_code, pos_data, settlement_code, extd_payment_code, countrycode_rcvinstt, countrycode_stlinstt, payee, stl_instt_id_code, rcv_instt_id_code, account_id_1, account_id_2, trans_data_req, trans_data_rsp, acquirer_node, issuer_node, super_merchant_id, routing_info, tran_state, pan_encrypted, req_in, req_out, rsp_in, rsp_out, acq_node_key, prev_trannr, transaction_id, term_batch_nr, acq_node_batch_nr, prev_acq_node_key,acq_part_name,retailer_id, store_id, device_id, org_type) values (";
-
-        td_logger.debug(query);
 
         query.append(appendQueryParams(msg.getExtendedField(7)));
         query.append(appendQueryParams(msg.getMsgType()));
@@ -191,8 +186,6 @@ bool TranMgrDBHandler::addToTrans(Iso8583JSON &msg, string req_in)
         req_in = "'" + req_in + "',";
         query.append(req_in);
 
-        td_logger.debug(query);
-
         LocalDateTime now;
         string req_out = Poco::DateTimeFormatter::format(now, "'%Y-%m-%d %H:%M:%s',");
         query.append(req_out);
@@ -212,16 +205,17 @@ bool TranMgrDBHandler::addToTrans(Iso8583JSON &msg, string req_in)
         query.append("'" + (msg.getExtendedField(_011_ORIGINATOR_TYPE)) + "'");
         query.append(")");
 
-        td_logger.debug(query);
+        td_logger.trace(query);
 
         txn.exec(query);
         txn.commit();
 
         c.disconnect();
     }
-    catch (...)
+    catch (exception &e)
     {
-        //td_logger.error(e.what());
+        td_logger.error("Error in addToTrans");
+        td_logger.error(e.what());
         return false;
     }
     return true;
@@ -243,14 +237,14 @@ bool TranMgrDBHandler::updateTrans(Iso8583JSON &msg)
 
         pqxx::work txn(c);
 
-        string query = "update transactions set "; //retr_ref_nr=xretr_ref_nr  where tran_nr = xtran_nr;";
+        string query = "update transactions set ";
 
         query.append("amount_stl=" + NumberFormatter::format(Utility::convertolong(msg.getField(_005_AMOUNT_SETTLE))) + ",");
         query.append("amount_chb=" + NumberFormatter::format(Utility::convertolong(msg.getField(_006_AMOUNT_CARDHOLDER_BILL))) + ",");
         query.append("fee_amount_chb=" + NumberFormatter::format(Utility::convertolong(msg.getField(_028_AMOUNT_TRAN_FEE))) + ",");
         query.append("convrate_stl=" + NumberFormatter::format(Utility::convertolong(msg.getField(_009_CONV_RATE_SETTLE))) + ",");
         query.append("convrate_chb=" + NumberFormatter::format(Utility::convertolong(msg.getField(_010_CONV_RATE_CARDHOLDER_BILL))) + ",");
-        query.append("auth_id_rsp_len='',");
+        //query.append("auth_id_rsp_len='',");
         query.append("auth_id_rsp='" + msg.getField(_038_AUTH_ID_RSP) + "',");
         query.append("rsp_code='" + msg.getField(_039_RSP_CODE) + "',");
         query.append("addl_rsp_data='" + msg.getField(_044_ADDITIONAL_RSP_DATA) + "',");
@@ -263,10 +257,11 @@ bool TranMgrDBHandler::updateTrans(Iso8583JSON &msg)
         query.append("tran_state=1,");
         query.append("rsp_in=now(),");
         query.append("rsp_out=now(),");
+        query.append("last_updated=now(),");
         query.append("retr_ref_nr='" + msg.getField(_037_RETRIEVAL_REF_NR) + "' ");
         query.append("where tran_nr=" + msg.getExtendedField(_007_TRAN_NR));
 
-        td_logger.debug(query);
+        td_logger.trace(query);
 
         txn.exec(query);
         txn.commit();
@@ -395,7 +390,7 @@ bool TranMgrDBHandler::addTMDeclineToTrans(Iso8583JSON &msg)
         query.append("'" + (msg.getExtendedField(11)) + "'");
         query.append(")");
 
-        td_logger.debug(query);
+        td_logger.trace(query);
 
         txn.exec(query);
         txn.commit();
