@@ -34,6 +34,8 @@
 
 #include <Poco/NumberParser.h>
 
+#include <Poco/Timespan.h>
+
 #include <iostream>
 #include <string>
 #include <vector>
@@ -50,6 +52,8 @@
 #include "Worker.h"
 #include "WorkerThreadPool.h"
 #include "UpdateTransactionsInDB.h"
+
+using Poco::Timespan;
 
 using namespace Poco::Net;
 using namespace Poco::Util;
@@ -267,7 +271,7 @@ class TMRequestHandler : public HTTPRequestHandler
 
                 resp.setStatus(HTTPResponse::HTTP_OK);
                 resp.setContentType("application/json");
-
+                resp.setContentLength64(responseStr.length());
                 ostream &out = resp.send();
                 out << responseStr;
 
@@ -838,6 +842,10 @@ string TMRequestHandler::processMsg(string request)
             {
                 mh.processFinMsg(msg, tmdbh);
             }
+            else if (val == "0220")
+            {
+                mh.process0220Msg(msg, tmdbh);
+            }
             else if (val == "0320")
             {
                 mh.process0320Msg(msg, tmdbh);
@@ -854,9 +862,9 @@ string TMRequestHandler::processMsg(string request)
             {
                 mh.process0620Msg(msg, tmdbh);
             }
-            else if (val == "0220")
+            else if (val == "0800")
             {
-                mh.process0220Msg(msg, tmdbh);
+                mh.process0800Msg(msg, tmdbh);
             }
         }
 
@@ -873,10 +881,6 @@ string TMRequestHandler::processMsg(string request)
 
         resp = msg.toMsg();
     }
-
-    //resp.append("\r\n");
-
-    //    m_logger.information("Message To Acquirer Node\n" + resp);
 
     return resp;
 }
@@ -987,11 +991,11 @@ class TMServerApp : public ServerApplication
     {
         if (!_helpRequested)
         {
-            Config::mq = config().getString("mq_name", "NOK");
-            Config::moduleName = config().getString("ModuleName", "NOK");
+            //Config::mq = config().getString("mq_name", "NOK");
+            Config::moduleName = config().getString("ModuleName", "TranMgr");
             string path = config().getString("path", "NOK");
-            string rotation = config().getString("rotation", "NOK");
-            string archive = config().getString("archive", "NOK");
+            string rotation = config().getString("rotation", "daily");
+            string archive = config().getString("archive", "timestamp");
             string tmip = config().getString("TMIP", "127.0.0.1");
             string times = config().getString("times", "local");
             string compress = config().getString("compress", "true");
@@ -999,14 +1003,10 @@ class TMServerApp : public ServerApplication
             string purgeCount = config().getString("purgeCount", "2");
             string loglevel = config().getString("loglevel", "information");
 
-            unsigned short tmport = (unsigned short)config().getInt("TMPort",
-                                                                    28080);
-            unsigned short maxThreads = (unsigned short)config().getInt(
-                "MaxThreads", 100);
-            unsigned short maxQueued = (unsigned short)config().getInt(
-                "MaxQueued", 100);
-            unsigned short maxConns = (unsigned short)config().getInt(
-                "MaxConns", 100);
+            unsigned short tmport = (unsigned short)config().getInt("TMPort", 28080);
+            unsigned short maxThreads = (unsigned short)config().getInt("MaxThreads", 2);
+            unsigned short maxQueued = (unsigned short)config().getInt("MaxQueued", 300);
+            unsigned short maxConns = (unsigned short)config().getInt("MaxConns", 300);
 
             Config::dburl = config().getString("DBURL");
             Config::hsmurl = config().getString("HSMURL");
@@ -1082,8 +1082,11 @@ class TMServerApp : public ServerApplication
             Poco::Thread th_upddb;
             th_upddb.start(updtransindb);
 
+            Timespan ts2(30 * Timespan::SECONDS); // 30s
             HTTPServerParams *pParams = new HTTPServerParams;
-            pParams->setKeepAlive(false);
+            pParams->setKeepAlive(true);
+            pParams->setKeepAliveTimeout(ts2);
+            pParams->setMaxKeepAliveRequests(100);
             pParams->setMaxThreads(maxThreads);
             pParams->setMaxQueued(maxQueued);
             //pParams->setThreadIdleTime(threadIdleTime);

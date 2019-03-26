@@ -39,12 +39,14 @@ class MsgHandler
     bool process0420Msg(Iso8583JSON &msg, TranMgrDBHandler tmdbh);
     void process0520Msg(Iso8583JSON &msg, TranMgrDBHandler tmdbh);
     void process0620Msg(Iso8583JSON &msg, TranMgrDBHandler tmdbh);
+    void process0800Msg(Iso8583JSON &msg, TranMgrDBHandler tmdbh);
     //
 
   private:
     Logger &td_logger;
 
     bool constructPINBlock(Iso8583JSON &msg, string iss_key_name);
+    bool getNewKeys(Iso8583JSON &msg, string pin_key, string data_key, string master_key);
     void clearRespFields(Iso8583JSON &msg);
     bool allowFallback(Iso8583JSON &msg);
     void updateDateTime(Iso8583JSON &msg);
@@ -789,6 +791,60 @@ void MsgHandler::process0620Msg(Iso8583JSON &msg, TranMgrDBHandler tmdbh)
     }
 }
 
+/////////////////////////////////////////////////////////////////////////////////////
+
+void MsgHandler::process0800Msg(Iso8583JSON &msg, TranMgrDBHandler tmdbh)
+{
+
+    bool route = false;
+    Route rt;
+    bool dbstatus;
+
+    string pcode;
+
+    if (msg.isFieldSet(_003_PROCESSING_CODE))
+    {
+        pcode = msg.getField(_003_PROCESSING_CODE);
+
+        if (Utility::startsWith(pcode, "92"))
+        {
+            if (!getNewKeys(msg))
+            {
+            }
+        }
+    }
+    else
+    {
+        msg.setRspMsgType();
+        msg.setField(_039_RSP_CODE, "00");
+    }
+}
+///////////////////////////////////////////////////////////////////////////////
+
+bool MsgHandler::getNewKeys(Iso8583JSON &msg)
+{
+    if (!msg.isExtendedFieldSet(_016_PIN_KEY))
+    {
+        td_logger.warn("getNewKeys - Extd Field 16 absent");
+        return false;
+    }
+
+    if (!msg.isExtendedFieldSet(_017_DATA_KEY))
+    {
+        td_logger.warn("getNewKeys - Extd Field 17 absent");
+        return false;
+    }
+
+    if (!msg.isFieldSet(_046_ADDITIONAL_DATA_ISO))
+    {
+        td_logger.warn("getNewKeys - Field 46 absent");
+        return false;
+    }
+
+    string pin_key_name = msg.getExtendedField(_016_PIN_KEY);
+    string data_key_name = msg.getExtendedField(_017_DATA_KEY);
+    string master_key = msg.getField(_046_ADDITIONAL_DATA_ISO);
+}
 ///////////////////////////////////////////////////////////////////////////////
 
 bool MsgHandler::constructPINBlock(Iso8583JSON &msg, string iss_key_name)
@@ -806,10 +862,10 @@ bool MsgHandler::constructPINBlock(Iso8583JSON &msg, string iss_key_name)
 
     if (acq_working_key.find("TPK") != std::string::npos)
     {
-        //        newpinblock = hkm.translateTPKtoZPK(
-        //                acq_working_key, iss_key_name,
-        //                msg.getField(_052_PIN_DATA),
-        //                msg.getField(_002_PAN));
+        newpinblock = hkm.translateTPKtoZPK(
+            acq_working_key, iss_key_name,
+            msg.getField(_052_PIN_DATA),
+            msg.getField(_002_PAN));
     }
     else if (acq_working_key.find("ZPK") != std::string::npos)
     {

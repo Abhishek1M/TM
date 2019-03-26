@@ -12,12 +12,14 @@
 #include "HSMMsg.h"
 #include "Config.h"
 
-class HSMKeyMgmt {
-private:
+class HSMKeyMgmt
+{
+  private:
     string dburl;
-public:
 
-    HSMKeyMgmt(string db_url) : dburl(db_url) {
+  public:
+    HSMKeyMgmt(string db_url) : dburl(db_url)
+    {
     }
 
     HSMKeyInfo getKeyDetails(string keyname);
@@ -27,11 +29,14 @@ public:
     bool translateZPKFromZMKToLMK(string zpk_key_name, string zmk_key_name, string encrypted_key, string remote_kcv);
     string translateZPKtoZPK(string srckeyname, string destkeyname, string pinblock, string cardnumber);
     string translateTPKtoZPK(string srckeyname, string destkeyname, string pinblock, string cardnumber);
+    HSMKeyInfo getNewTPK(string tpk_name, string tmk_name);
+    HSMKeyInfo getNewTMK(string tmk_name, string zmk_name);
 };
 
 /////////////////////////////////////////////////////////////////////////
 
-HSMKeyInfo HSMKeyMgmt::getKeyDetails(string keyname) {
+HSMKeyInfo HSMKeyMgmt::getKeyDetails(string keyname)
+{
     HSMKeyInfo hki;
     string query = "select * from fetchhsmkey('" + keyname + "');";
 
@@ -44,9 +49,12 @@ HSMKeyInfo HSMKeyMgmt::getKeyDetails(string keyname) {
     // Execute query
     pqxx::result r = txn.exec(query);
 
-    if (r.size() != 1) {
+    if (r.size() != 1)
+    {
         hki.set_found(false);
-    } else {
+    }
+    else
+    {
         hki.set_keyname(r[0][1].as<string>());
         hki.set_keytype(r[0][2].as<string>());
         hki.set_keylen(r[0][3].as<int>());
@@ -64,7 +72,8 @@ HSMKeyInfo HSMKeyMgmt::getKeyDetails(string keyname) {
 }
 /////////////////////////////////////////////////////////////////////////
 
-bool HSMKeyMgmt::createKey(HSMKeyInfo hki) {
+bool HSMKeyMgmt::createKey(HSMKeyInfo hki)
+{
     pqxx::connection c(dburl);
     pqxx::work txn(c);
 
@@ -88,7 +97,8 @@ bool HSMKeyMgmt::createKey(HSMKeyInfo hki) {
 }
 /////////////////////////////////////////////////////////////////////////
 
-bool HSMKeyMgmt::updateKey(HSMKeyInfo hki) {
+bool HSMKeyMgmt::updateKey(HSMKeyInfo hki)
+{
     pqxx::connection c(dburl);
     pqxx::work txn(c);
 
@@ -112,8 +122,122 @@ bool HSMKeyMgmt::updateKey(HSMKeyInfo hki) {
 }
 ///////////////////////////////////////////////////////////////////////////////
 
+HSMKeyInfo HSMKeyMgmt::getNewTPK(string tpk_name, string tmk_name)
+{
+    HSMKeyInfo hki = getKeyDetails(tpk_name);
+
+    if (hki.get_found() == false)
+    {
+        hki.set_keyname(tpk_name);
+        hki.set_parentkeyname(tmk_name);
+        hki.set_keytype("002");
+        hki.set_keylen(2);
+
+        createKey(hki);
+    }
+
+    HSMKeyInfo parenthki = getKeyDetails(hki.get_parentkeyname());
+
+    if (parenthki.get_found() == false)
+    {
+        hki.set_found(false);
+        return hki;
+    }
+
+    HSMMsg hsmrequest;
+    hsmrequest.setField(_CMD, _HC_GEN_TMK_TPK_PVK);
+    hsmrequest.setField(_CURR_TMK_TPK_PVK, parenthki.get_keyvalueunderlmk());
+
+    string resp = Utility::ofPostRequest(Config::hsmurl, hsmrequest.toMsg(), 10);
+
+    if ((resp.compare("TMO") == 0) || (resp.compare("NOK") == 0))
+    {
+        hki.set_found(false);
+        return hki;
+    }
+
+    HSMMsg hsmresp;
+    hsmresp.parseMsg(resp);
+
+    string ec = hsmresp.getField(_ERROR_CODE);
+
+    if (ec.compare("00") == 0)
+    {
+        hki.set_keyvalueunderparent(hsmresp.getField(_NEW_KEY_UNDER_CURR_KEY));
+        hki.set_keyvalueunderlmk(hsmresp.getField(_NEW_KEY_UNDER_LMK));
+
+        updateKey(hki);
+        hki.set_found(true);
+    }
+    else
+    {
+        hki.set_found(false);
+        return hki;
+    }
+
+    return hki;
+}
+///////////////////////////////////////////////////////////////////////////////
+HSMKeyInfo HSMKeyMgmt::getNewTMK(string tmk_name, string zmk_name)
+{
+    HSMKeyInfo hki = getKeyDetails(tmk_name);
+
+    if (hki.get_found() == false)
+    {
+        hki.set_keyname(tmk_name);
+        hki.set_parentkeyname(zmk_name);
+        hki.set_keytype("002");
+        hki.set_keylen(2);
+
+        createKey(hki);
+    }
+
+    HSMKeyInfo parenthki = getKeyDetails(hki.get_parentkeyname());
+
+    if (parenthki.get_found() == false)
+    {
+        hki.set_found(false);
+        return hki;
+    }
+
+    HSMMsg hsmrequest;
+    hsmrequest.setField(_CMD, _HC_GEN_TMK_TPK_PVK);
+    hsmrequest.setField(_CURR_TMK_TPK_PVK, parenthki.get_keyvalueunderlmk());
+
+    string resp = Utility::ofPostRequest(Config::hsmurl, hsmrequest.toMsg(), 10);
+
+    if ((resp.compare("TMO") == 0) || (resp.compare("NOK") == 0))
+    {
+        hki.set_found(false);
+        return hki;
+    }
+
+    HSMMsg hsmresp;
+    hsmresp.parseMsg(resp);
+
+    string ec = hsmresp.getField(_ERROR_CODE);
+
+    if (ec.compare("00") == 0)
+    {
+        hki.set_keyvalueunderparent(hsmresp.getField(_NEW_KEY_UNDER_CURR_KEY));
+        hki.set_keyvalueunderlmk(hsmresp.getField(_NEW_KEY_UNDER_LMK));
+
+        updateKey(hki);
+        hki.set_found(true);
+    }
+    else
+    {
+        hki.set_found(false);
+        return hki;
+    }
+
+    return hki;
+}
+///////////////////////////////////////////////////////////////////////////////
+
 string HSMKeyMgmt::translateBDKtoZPKTDES(string srckeyname, string destkeyname,
-        string pinblock, string cardnumber, string ksn_pb) {
+                                         string pinblock, string cardnumber, string ksn_pb)
+{
     string newpinblock;
     int cardlen = cardnumber.length();
     int startpos = cardlen - 1 - 12;
@@ -122,9 +246,12 @@ string HSMKeyMgmt::translateBDKtoZPKTDES(string srckeyname, string destkeyname,
     HSMKeyInfo srchki = getKeyDetails(srckeyname);
     HSMKeyInfo desthki = getKeyDetails(destkeyname);
 
-    if (srchki.get_found() == false) {
+    if (srchki.get_found() == false)
+    {
         return "NOK";
-    } else if (desthki.get_found() == false) {
+    }
+    else if (desthki.get_found() == false)
+    {
         return "NOK";
     }
 
@@ -141,17 +268,23 @@ string HSMKeyMgmt::translateBDKtoZPKTDES(string srckeyname, string destkeyname,
 
     string resp = Utility::ofPostRequest(Config::hsmurl, hsmrequest.toMsg(), 10);
 
-    if ((resp.compare("TMO") == 0) || (resp.compare("NOK") == 0)) {
+    if ((resp.compare("TMO") == 0) || (resp.compare("NOK") == 0))
+    {
         newpinblock = "NOK";
-    } else {
+    }
+    else
+    {
         HSMMsg hsmresp;
         hsmresp.parseMsg(resp);
 
         string ec = hsmresp.getField(_ERROR_CODE);
 
-        if (ec.compare("00") == 0) {
+        if (ec.compare("00") == 0)
+        {
             newpinblock = hsmresp.getField(_DEST_PIN_BLK);
-        } else {
+        }
+        else
+        {
             newpinblock = "NOK";
         }
     }
@@ -205,67 +338,10 @@ bool HSMKeyMgmt::translateZPKFromZMKToLMK(string zpk_key_name, string zmk_key_na
 }
  */
 ///////////////////////////////////////////////////////////////////////////////
-/*
+
 string HSMKeyMgmt::translateTPKtoZPK(string srckeyname, string destkeyname,
-        string pinblock, string cardnumber) {
-    string newpinblock;
-    string accountnumber;
-    int cardlen = cardnumber.trim().length();
-    int startpos;
-
-    if (cardlen > 12) {
-        startpos = cardlen - 1 - 12;
-        accountnumber = cardnumber.substring(startpos, 12);
-    } else {
-        startpos = 0;
-        accountnumber = "0" + cardnumber.substring(startpos, 12);
-        //accountnumber = cardnumber.substring(startpos, cardlen);
-    }
-
-    HSMKeyInfo srchki = getKeyDetails(srckeyname);
-    HSMKeyInfo desthki = getKeyDetails(destkeyname);
-
-    if (srchki.get_found() == false) {
-        return "NOK";
-    }
-
-    if (desthki.get_found() == false) {
-        return "NOK";
-    }
-
-    HSMMsg hsmrequest;
-    hsmrequest.setField(HSMJSON.Fields._CMD,
-            HSMJSON.HSMCommands._CA_XLATE_TPK_ZPK);
-    hsmrequest.setField(HSMJSON.Fields._SOURCE_TPK, srchki.keyvalueunderlmk);
-    hsmrequest.setField(HSMJSON.Fields._DEST_ZPK, desthki.keyvalueunderlmk);
-    hsmrequest.setField(HSMJSON.Fields._MAX_PIN_LEN, "12");
-    hsmrequest.setField(HSMJSON.Fields._SOURCE_PIN_BLK, pinblock);
-    hsmrequest.setField(HSMJSON.Fields._SOURCE_PIN_BLK_FORMAT, "01");
-    hsmrequest.setField(HSMJSON.Fields._DEST_PIN_BLK_FORMAT, "01");
-    hsmrequest.setField(HSMJSON.Fields._ACCOUNT_NR, accountnumber);
-
-    string resp = Utility::ofPostRequest(Config::get_hsmurl(), hsmrequest.getMsgToHSM(4), 10);
-
-    if (resp.empty()) {
-        return false;
-    }
-
-    HSMMsg hsmresp;
-    hsmresp.parseMsg(resp);
-
-    if (hsmresp.getField(HSMJSON.Fields._ERROR_CODE).equals("00")) {
-        newpinblock = hsmresp.getField(HSMJSON.Fields._DEST_PIN_BLK);
-    } else {
-        return null;
-    }
-
-    return newpinblock;
-}
- */
-///////////////////////////////////////////////////////////////////////////////
-
-string HSMKeyMgmt::translateZPKtoZPK(string srckeyname, string destkeyname,
-        string pinblock, string cardnumber) {
+                                     string pinblock, string cardnumber)
+{
     string newpinblock;
     int cardlen = cardnumber.length();
     int startpos = cardlen - 1 - 12;
@@ -274,11 +350,70 @@ string HSMKeyMgmt::translateZPKtoZPK(string srckeyname, string destkeyname,
     HSMKeyInfo srchki = getKeyDetails(srckeyname);
     HSMKeyInfo desthki = getKeyDetails(destkeyname);
 
-    if (srchki.get_found() == false) {
+    if (srchki.get_found() == false)
+    {
         return "NOK";
     }
 
-    if (desthki.get_found() == false) {
+    if (desthki.get_found() == false)
+    {
+        return "NOK";
+    }
+
+    HSMMsg hsmrequest;
+
+    hsmrequest.setField(_CMD, _CA_XLATE_TPK_ZPK);
+    hsmrequest.setField(_SOURCE_ZPK, srchki.get_keyvalueunderlmk());
+    hsmrequest.setField(_DEST_ZPK, desthki.get_keyvalueunderlmk());
+    hsmrequest.setField(_MAX_PIN_LEN, "12");
+    hsmrequest.setField(_SOURCE_PIN_BLK, pinblock);
+    hsmrequest.setField(_SOURCE_PIN_BLK_FORMAT, "01");
+    hsmrequest.setField(_DEST_PIN_BLK_FORMAT, "01");
+    hsmrequest.setField(_ACCOUNT_NR, accountnumber);
+
+    string resp = Utility::ofPostRequest(Config::hsmurl, hsmrequest.toMsg(), 10);
+
+    if (resp.empty())
+    {
+        return "NOK";
+    }
+
+    HSMMsg hsmresp;
+    hsmresp.parseMsg(resp);
+
+    string ec = hsmresp.getField(_ERROR_CODE);
+
+    if (ec.compare("00") == 0)
+    {
+        newpinblock = hsmresp.getField(_DEST_PIN_BLK);
+    }
+    else
+    {
+        newpinblock = "NOK";
+    }
+
+    return newpinblock;
+}
+///////////////////////////////////////////////////////////////////////////////
+
+string HSMKeyMgmt::translateZPKtoZPK(string srckeyname, string destkeyname,
+                                     string pinblock, string cardnumber)
+{
+    string newpinblock;
+    int cardlen = cardnumber.length();
+    int startpos = cardlen - 1 - 12;
+    string accountnumber = cardnumber.substr(startpos, 12);
+
+    HSMKeyInfo srchki = getKeyDetails(srckeyname);
+    HSMKeyInfo desthki = getKeyDetails(destkeyname);
+
+    if (srchki.get_found() == false)
+    {
+        return "NOK";
+    }
+
+    if (desthki.get_found() == false)
+    {
         return "NOK";
     }
 
@@ -293,10 +428,10 @@ string HSMKeyMgmt::translateZPKtoZPK(string srckeyname, string destkeyname,
     hsmrequest.setField(_DEST_PIN_BLK_FORMAT, "01");
     hsmrequest.setField(_ACCOUNT_NR, accountnumber);
 
-
     string resp = Utility::ofPostRequest(Config::hsmurl, hsmrequest.toMsg(), 10);
 
-    if (resp.empty()) {
+    if (resp.empty())
+    {
         return "NOK";
     }
 
@@ -305,9 +440,12 @@ string HSMKeyMgmt::translateZPKtoZPK(string srckeyname, string destkeyname,
 
     string ec = hsmresp.getField(_ERROR_CODE);
 
-    if (ec.compare("00") == 0) {
+    if (ec.compare("00") == 0)
+    {
         newpinblock = hsmresp.getField(_DEST_PIN_BLK);
-    } else {
+    }
+    else
+    {
         newpinblock = "NOK";
     }
 
@@ -315,4 +453,3 @@ string HSMKeyMgmt::translateZPKtoZPK(string srckeyname, string destkeyname,
 }
 
 #endif /* HSMKEYMGMT_H */
-
