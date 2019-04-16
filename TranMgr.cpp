@@ -102,7 +102,7 @@ Encrypt Config::e;
 
 class DBUpdate : public Poco::Runnable
 {
-  public:
+public:
     DBUpdate(string modulename, Logger &alogger) : _modulename(modulename), m_logger(alogger)
     {
     }
@@ -142,7 +142,7 @@ class DBUpdate : public Poco::Runnable
         }
     }
 
-  private:
+private:
     string _modulename;
     Logger &m_logger;
 };
@@ -151,7 +151,7 @@ class DBUpdate : public Poco::Runnable
 
 class TMGetStatusHandler : public HTTPRequestHandler
 {
-  public:
+public:
     TMGetStatusHandler(Logger &alogger) : m_logger(alogger)
     {
     }
@@ -175,14 +175,14 @@ class TMGetStatusHandler : public HTTPRequestHandler
         m_logger.notice("Responded with OK");
     }
 
-  private:
+private:
     Logger &m_logger;
 };
 ////////////////////////////////////////////////////////////////////////////////
 
 class TMReloadHandler : public HTTPRequestHandler
 {
-  public:
+public:
     TMReloadHandler()
     {
     }
@@ -236,7 +236,7 @@ class TMReloadHandler : public HTTPRequestHandler
 
 class TMRequestHandler : public HTTPRequestHandler
 {
-  public:
+public:
     TMRequestHandler(Logger &logger) : m_logger(logger), tmdbh(logger)
     {
     }
@@ -294,7 +294,7 @@ class TMRequestHandler : public HTTPRequestHandler
         }
     }
 
-  private:
+private:
     Logger &m_logger;
     TranMgrDBHandler tmdbh;
 
@@ -318,8 +318,7 @@ bool TMRequestHandler::isValidMsg(Iso8583JSON &msg)
             int pan_len = msg.getField(_002_PAN).length();
             if (pan_len > 19 || pan_len < 12)
             {
-                msg.setField(_044_ADDITIONAL_RSP_DATA,
-                             "002");
+                msg.setField(_044_ADDITIONAL_RSP_DATA, "002");
 
                 m_logger.error("Incorrect Request - Field 2 length is incorrect");
                 return false;
@@ -565,22 +564,19 @@ bool TMRequestHandler::isValidMsg(Iso8583JSON &msg)
             return false;
         }
 
-        if (!msg.isExtendedFieldSet(
-                _006_TERM_BATCH_NR))
+        if (!msg.isExtendedFieldSet(_006_TERM_BATCH_NR))
         {
             m_logger.error("Extended Field 123_006 is absent");
             return false;
         }
 
-        if (!msg.isExtendedFieldSet(
-                _008_RETAILER_ID))
+        if (!msg.isExtendedFieldSet(_008_RETAILER_ID))
         {
             m_logger.error("Extended Field 123_008 is absent");
             return false;
         }
 
-        if (!msg.isExtendedFieldSet(
-                _011_ORIGINATOR_TYPE))
+        if (!msg.isExtendedFieldSet(_011_ORIGINATOR_TYPE))
         {
             m_logger.error("Extended Field 123_011 is absent");
             return false;
@@ -782,6 +778,7 @@ string TMRequestHandler::processMsg(string request)
 
     //Parser parser;
     string resp("NOK");
+    string rrn("000000000000");
 
     try
     {
@@ -790,39 +787,35 @@ string TMRequestHandler::processMsg(string request)
         m_logger.information(msg.dumpMsg());
 
         string val = msg.getMsgType();
-        string rrn;
 
-        if (msg.isExtendedFieldSet(_007_TRAN_NR) == false)
+        long tran_nr = tmdbh.getNewTranNr(msg.getExtendedField(_001_ACQ_NODE_KEY));
+
+        if (tran_nr == 0)
         {
-            long tran_nr = tmdbh.getNewTranNr();
+            msg.setRspMsgType();
 
-            if (tran_nr == 0)
-            {
-                msg.setRspMsgType();
+            msg.setField(_039_RSP_CODE, _96_SYSTEM_MALFUNCTION);
 
-                msg.setField(_039_RSP_CODE, _96_SYSTEM_MALFUNCTION);
+            m_logger.critical("Could not fetch new transaction number");
+            m_logger.critical("Response\n" + msg.dumpMsg());
 
-                m_logger.critical("Could not fetch new transaction number");
-                m_logger.critical("Response\n" + msg.dumpMsg());
+            resp = msg.toMsg();
 
-                resp = msg.toMsg();
+            return resp;
+        }
 
-                return resp;
-            }
+        msg.setExtendedField(_007_TRAN_NR, NumberFormatter::format(tran_nr));
 
+        if (!msg.isFieldSet(_037_RETRIEVAL_REF_NR))
+        {
             rrn = NumberFormatter::format0(tran_nr, 12);
-            msg.setExtendedField(_007_TRAN_NR, rrn);
+            msg.setField(_037_RETRIEVAL_REF_NR, rrn);
         }
         else
         {
-            rrn = msg.getExtendedField(_007_TRAN_NR);
-            rrn = Utility::resize(rrn, 12, "0", false);
+            rrn = msg.getField(_037_RETRIEVAL_REF_NR);
         }
 
-        if (msg.isFieldSet(_037_RETRIEVAL_REF_NR) == false)
-        {
-            msg.setField(_037_RETRIEVAL_REF_NR, rrn);
-        }
         m_logger.trace("Processing transaction with #" + rrn);
 
         MsgHandler mh(m_logger);
@@ -889,7 +882,7 @@ string TMRequestHandler::processMsg(string request)
 
 class TMRequestHandlerFactory : public HTTPRequestHandlerFactory
 {
-  public:
+public:
     TMRequestHandlerFactory(Logger &alogger) : m_logger(alogger)
     {
     }
@@ -923,7 +916,7 @@ class TMRequestHandlerFactory : public HTTPRequestHandlerFactory
         }
     }
 
-  private:
+private:
     Logger &m_logger;
 };
 
@@ -931,7 +924,7 @@ class TMRequestHandlerFactory : public HTTPRequestHandlerFactory
 
 class TMServerApp : public ServerApplication
 {
-  protected:
+protected:
     void initialize(Application &self)
     {
         loadConfiguration();
@@ -1109,7 +1102,7 @@ class TMServerApp : public ServerApplication
         return Application::EXIT_OK;
     }
 
-  private:
+private:
     bool _helpRequested;
 };
 

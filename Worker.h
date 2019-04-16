@@ -82,7 +82,7 @@ string Worker::processMsg(string request) {
 
         string val = msg.getMsgType();
 
-        long tran_nr = tmdbh.getNewTranNr();
+        long tran_nr = tmdbh.getNewTranNr(msg.getExtendedField(_001_ACQ_NODE_KEY));
 
         if (tran_nr == 0) {
             msg.setRspMsgType();

@@ -157,20 +157,6 @@ bool MsgHandler::processFinMsg(Iso8583JSON &msg, TranMgrDBHandler tmdbh)
 
     WriteToDBEntity w(msg.toMsg(), req_in, req_in, req_in, req_in, Config::_INSERT_TRANS);
     Config::commit_db.push(w);
-    /*
-    dbstatus = tmdbh.addToTrans(msg, req_in);
-    if (dbstatus == false)
-    {
-        msg.setRspMsgType();
-        msg.setField(_039_RSP_CODE, _96_SYSTEM_MALFUNCTION);
-
-        clearRespFields(msg);
-
-        td_logger.error("DB entry unsuccessful \n" + msg.dumpMsg());
-
-        return false;
-    }
-*/
 
     td_logger.debug("URL - " + rt.getUrl());
     td_logger.debug("Issuer Key Name - " + rt.getisskeyname());
@@ -381,7 +367,7 @@ bool MsgHandler::process0220Msg(Iso8583JSON &msg, TranMgrDBHandler tmdbh)
     msg.setExtendedField(_009_PREV_TRAN_NR, NumberFormatter::format(tran_org.tran_nr));
 
     // Here our message (msg) to be sent to Acquirer is done
-    // Introduce Poco::NotificationQueue to write the reversal message to be sent to the Issuer
+    // Introduce Poco::NotificationQueue to write the adjustment message to be sent to the Issuer
     tmdbh.updateadjustment(msg_to_iss_node.getExtendedField(_009_PREV_TRAN_NR));
 
     // Send request to Issuer Node
@@ -813,6 +799,8 @@ void MsgHandler::process0800Msg(Iso8583JSON &msg, TranMgrDBHandler tmdbh)
 
     string pcode;
 
+    msg.setRspMsgType();
+
     if (msg.isFieldSet(_003_PROCESSING_CODE))
     {
         pcode = msg.getField(_003_PROCESSING_CODE);
@@ -821,15 +809,17 @@ void MsgHandler::process0800Msg(Iso8583JSON &msg, TranMgrDBHandler tmdbh)
         {
             if (!getNewKeys(msg))
             {
-                msg.setRspMsgType();
                 msg.setField(_039_RSP_CODE, _96_SYSTEM_MALFUNCTION);
             }
+        }
+        else
+        {
+            msg.setField(_039_RSP_CODE, _30_FORMAT_ERROR);
         }
     }
     else
     {
-        msg.setRspMsgType();
-        msg.setField(_039_RSP_CODE, _00_SUCCESSFUL);
+        msg.setField(_039_RSP_CODE, _30_FORMAT_ERROR);
     }
 }
 ///////////////////////////////////////////////////////////////////////////////
@@ -857,6 +847,22 @@ bool MsgHandler::getNewKeys(Iso8583JSON &msg)
     string pin_key_name = msg.getExtendedField(_016_PIN_KEY);
     string data_key_name = msg.getExtendedField(_017_DATA_KEY);
     string master_key = msg.getField(_046_ADDITIONAL_DATA_ISO);
+
+    HSMKeyMgmt hkm(Config::dburl);
+    HSMKeyInfo hki_pin = hkm.getNewTPK(pin_key_name, master_key);
+    if (!hki_pin.get_found())
+    {
+        return false;
+    }
+
+    HSMKeyInfo hki_data = hkm.getNewTPK(data_key_name, master_key);
+    if (!hki_data.get_found())
+    {
+        return false;
+    }
+
+    string f048 = "01" + hki_pin.get_keyvalueunderparent() + "02" + hki_data.get_keyvalueunderparent();
+    msg.setField(_048_ADDITIONAL_DATA, f048);
 
     return true;
 }
@@ -913,8 +919,7 @@ bool MsgHandler::constructPINBlock(Iso8583JSON &msg, string iss_key_name)
     }
     else
     {
-        msg.setField(_052_PIN_DATA,
-                     newpinblock);
+        msg.setField(_052_PIN_DATA, newpinblock);
     }
 
     return true;
@@ -981,20 +986,6 @@ void MsgHandler::updateDateTime(Iso8583JSON &msg)
     string name_loc = msg.getField(_043_CARD_ACCEPTOR_NAME_LOC);
     string country = name_loc.substr(38, 40);
 
-    //    if (Config.timeOffset.containsKey(country)) {
-    //        int toffset = Config.timeOffset.get(country);
-    //
-    //        if (toffset != 0) {
-    //            msg.setField(7, Utility.getDateTime(toffset));
-    //            msg.setField(12, Utility.getTime(toffset));
-    //            msg.setField(13, Utility.getDate(toffset).substring(4));
-    //            msg.setField(_073_DATE_ACTION, Utility.getDate(toffset));
-    //        }
-    //    } else {
-    //        Config.lgr.warn("TimeOffset setting not found in countries");
-    //        msg.setField(Iso8583JSON.Bit._073_DATE_ACTION, Utility.getDate());
-    //    }
-
     int offset = Config::timeOffset.find(country)->second;
     int tzd = offset * 60;
 
@@ -1029,7 +1020,7 @@ bool MsgHandler::checkICAFlag(Iso8583JSON &msg)
         icaflag = "N";
     }
 
-    if(icaflag.compare("Y")==0)
+    if (icaflag.compare("Y") == 0)
     {
         return true;
     }

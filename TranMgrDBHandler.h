@@ -33,7 +33,7 @@ public:
     {
     }
 
-    long getNewTranNr();
+    long getNewTranNr(string acq_node_key);
     string appendQueryParams(string value);
     string appendQueryParams(long value);
     bool addToTrans(Iso8583JSON &msg, string req_in);
@@ -52,11 +52,11 @@ private:
 
 //////////////////////////////////////////////////////////////////////////
 
-long TranMgrDBHandler::getNewTranNr()
+long TranMgrDBHandler::getNewTranNr(string acq_node_key)
 {
     pqxx::connection c(Config::dburl);
 
-    string query = "select nextval('trans_trannr');";
+    string query = "call cm_gettrannr('" + acq_node_key + "',2);";
 
     if (!c.is_open())
     {
@@ -244,7 +244,6 @@ bool TranMgrDBHandler::updateTrans(Iso8583JSON &msg)
         query.append("fee_amount_chb=" + NumberFormatter::format(Utility::convertolong(msg.getField(_028_AMOUNT_TRAN_FEE))) + ",");
         query.append("convrate_stl=" + NumberFormatter::format(Utility::convertolong(msg.getField(_009_CONV_RATE_SETTLE))) + ",");
         query.append("convrate_chb=" + NumberFormatter::format(Utility::convertolong(msg.getField(_010_CONV_RATE_CARDHOLDER_BILL))) + ",");
-        //query.append("auth_id_rsp_len='',");
         query.append("auth_id_rsp='" + msg.getField(_038_AUTH_ID_RSP) + "',");
         query.append("rsp_code='" + msg.getField(_039_RSP_CODE) + "',");
         query.append("addl_rsp_data='" + msg.getField(_044_ADDITIONAL_RSP_DATA) + "',");
@@ -260,8 +259,6 @@ bool TranMgrDBHandler::updateTrans(Iso8583JSON &msg)
         query.append("last_updated=now(),");
         query.append("retr_ref_nr='" + msg.getField(_037_RETRIEVAL_REF_NR) + "' ");
         query.append("where tran_nr=" + msg.getExtendedField(_007_TRAN_NR));
-
-        td_logger.trace(query);
 
         txn.exec(query);
         txn.commit();
@@ -390,8 +387,6 @@ bool TranMgrDBHandler::addTMDeclineToTrans(Iso8583JSON &msg)
         query.append("'" + (msg.getExtendedField(11)) + "'");
         query.append(")");
 
-        td_logger.trace(query);
-
         txn.exec(query);
         txn.commit();
 
@@ -454,12 +449,7 @@ bool TranMgrDBHandler::getIssuerNode(Iso8583JSON &msg, Route &rt)
     acquirer_node = trim(acquirer_node);
     string pan = msg.getField(_002_PAN).substr(0, 12);
 
-    //    string query = "select rt_issuer_node, bin_owner, crdbflag, card_country, c.pname, "
-    //            "timeout, acq_instt_id, fwd_instt_id, iss_keyname, connurl,repeat_reversal "
-    //            "from getissnode('" + acquirer_node + "','" + pan + "')  a "
-    //            "left join issuer_nodes b on a.rt_issuer_node=b.iss_node_name "
-    //            "left join interface c on b.pname=c.pname;";
-
+    /*
     string query = "select rt.rt_issuer_node, "
                    "bin.bin_owner,"
                    "bin.crdbflag, "
@@ -485,6 +475,9 @@ bool TranMgrDBHandler::getIssuerNode(Iso8583JSON &msg, Route &rt)
                          "rt.rt_acq_node_name='" +
                    acquirer_node + "' "
                                    "order by rt_bl_priority limit 1;";
+                                   */
+
+    string query = "select * from getissnode('" + acquirer_node + "','" + pan + "');";
 
     // Create a non-transactional object
     pqxx::work txn(c);
@@ -499,27 +492,27 @@ bool TranMgrDBHandler::getIssuerNode(Iso8583JSON &msg, Route &rt)
         return false;
     }
 
-    ni.setIssuerNode(r[0][0].as<string>());
-    ni.setRoutingInfo(r[0][1].as<string>());
+    ni.setIssuerNode(r[0][5].as<string>());
+    ni.setRoutingInfo(r[0][4].as<string>());
 
-    rt.setPname(r[0][4].as<string>());
-    rt.setTimeout(r[0][5].as<long>());
-    rt.setUrl(r[0][9].as<string>());
-    rt.setisskeyname(r[0][8].as<string>());
-    rt.setRepeatReversal(r[0][10].as<int>());
+    rt.setPname(r[0][14].as<string>());
+    rt.setTimeout(r[0][7].as<long>());
+    rt.setUrl(r[0][13].as<string>());
+    rt.setisskeyname(r[0][11].as<string>());
+    rt.setRepeatReversal(r[0][12].as<int>());
 
-    msg.setField(_032_ACQUIRING_INST_ID_CODE, r[0][6].as<string>());
-    msg.setField(_033_FORWARDING_INST_ID_CODE, r[0][7].as<string>());
+    msg.setField(_032_ACQUIRING_INST_ID_CODE, r[0][8].as<string>());
+    msg.setField(_033_FORWARDING_INST_ID_CODE, r[0][9].as<string>());
 
     msg.setField(_122_NODE_INFO, ni.getNodeInfo());
 
     MapKeyValue mkv;
-    mkv.put("bin_owner", r[0][1].as<string>());
-    mkv.put("card_country", r[0][3].as<string>());
-    mkv.put("bank_name", r[0][13].as<string>());
-    mkv.put("description", r[0][12].as<string>());
-    mkv.put("card_type", r[0][11].as<string>());
-    mkv.put("crdbflag", r[0][2].as<string>());
+    mkv.put("bin_owner", r[0][4].as<string>());
+    mkv.put("card_country", r[0][2].as<string>());
+    mkv.put("bank_name", r[0][6].as<string>());
+    mkv.put("description", r[0][3].as<string>());
+    mkv.put("card_type", r[0][1].as<string>());
+    mkv.put("crdbflag", r[0][0].as<string>());
 
     string tran_req = msg.getField(_120_TRAN_DATA_REQ) + mkv.toMsg();
     msg.setField(_120_TRAN_DATA_REQ, tran_req);

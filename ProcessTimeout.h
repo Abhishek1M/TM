@@ -73,7 +73,7 @@ bool ProcessTimeout::processMsg(string data) {
 
     if (msg.getMsgType().compare("0420") == 0) {
         // add the 0420 to onl_trans
-        long tran_nr = tmdbh.getNewTranNr();
+        long tran_nr = tmdbh.getNewTranNr(msg.getExtendedField(_001_ACQ_NODE_KEY));
 
         if (tran_nr == 0) {
             msg.setRspMsgType();

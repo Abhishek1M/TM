@@ -14,10 +14,10 @@
 
 class HSMKeyMgmt
 {
-  private:
+private:
     string dburl;
 
-  public:
+public:
     HSMKeyMgmt(string db_url) : dburl(db_url)
     {
     }
@@ -31,6 +31,7 @@ class HSMKeyMgmt
     string translateTPKtoZPK(string srckeyname, string destkeyname, string pinblock, string cardnumber);
     HSMKeyInfo getNewTPK(string tpk_name, string tmk_name);
     HSMKeyInfo getNewTMK(string tmk_name, string zmk_name);
+    string decryptM2(string dekkeyname, string encrypteddata);
 };
 
 /////////////////////////////////////////////////////////////////////////
@@ -293,51 +294,6 @@ string HSMKeyMgmt::translateBDKtoZPKTDES(string srckeyname, string destkeyname,
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/*
-bool HSMKeyMgmt::translateZPKFromZMKToLMK(string zpk_key_name, string zmk_key_name,
-        string encrypted_key, string remote_kcv) {
-    string zpk_under_lmk, kcv;
-    boolean check;
-
-    if (!encrypted_key.empty()) {
-        encrypted_key = "U" + encrypted_key;
-    }
-
-    HSMKeyInfo srczpk = getKeyDetails(zpk_key_name);
-    HSMKeyInfo srczmk = getKeyDetails(zmk_key_name);
-    HSMMsg hsmrequest;
-    hsmrequest.setField(_CMD, _FA_XLATE_ZPK_ZMK_ZMK);
-    hsmrequest.setField(_ZMK, srczmk.keyvalueunderlmk);
-    hsmrequest.setField(_SOURCE_ZPK, encrypted_key);
-
-    string resp = Utility::ofPostRequest(Config::get_hsmurl(), hsmrequest.getMsgToHSM(4), 10);
-
-    if (resp.empty()) {
-        return false;
-    }
-
-    HSMMsg hsmresp;
-    hsmresp.parseMsg(resp);
-
-    if (hsmresp.getField(_ERROR_CODE).equals("00")) {
-        zpk_under_lmk = hsmresp.getField(_NEW_KEY_UNDER_CURR_KEY);
-        kcv = hsmresp.getField(_KEY_CHECK_VALUE);
-
-        srczpk.setKeyvalueunderlmk(zpk_under_lmk);
-        srczpk.setKeycheckvalue(kcv);
-
-        check = updateKey(srczpk);
-
-        if (check) {
-            check = kcv.startsWith(remote_kcv);
-        }
-
-        return check;
-    }
-    return false;
-}
- */
-///////////////////////////////////////////////////////////////////////////////
 
 string HSMKeyMgmt::translateTPKtoZPK(string srckeyname, string destkeyname,
                                      string pinblock, string cardnumber)
@@ -450,6 +406,44 @@ string HSMKeyMgmt::translateZPKtoZPK(string srckeyname, string destkeyname,
     }
 
     return newpinblock;
+}
+///////////////////////////////////////////////////////////////////////////////
+
+string HSMKeyMgmt::decryptM2(string dekkeyname, string encrypteddata)
+{
+    string cleardata;
+
+    HSMKeyInfo srchki = getKeyDetails(dekkeyname);
+
+    if (srchki.get_found() == false)
+    {
+        return "NOK";
+    }
+
+    HSMMsg hsmrequest;
+    hsmrequest.setField(_CMD, _M2_DECRYPT_DATA);
+    hsmrequest.setField(_KEY, srchki.get_keyvalueunderlmk());
+    hsmrequest.setField(_DATA, encrypteddata);
+
+    string resp = Utility::ofPostRequest(Config::hsmurl, hsmrequest.toMsg(), 10);
+
+    if (resp.empty())
+    {
+        return "NOK";
+    }
+
+    HSMMsg hsmresp;
+    hsmresp.parseMsg(resp);
+
+    string ec = hsmresp.getField(_ERROR_CODE);
+
+    if (ec.compare("00") == 0)
+    {
+        cleardata = hsmresp.getField(_DATA);
+
+        return cleardata;
+    }
+    return "NOK";
 }
 
 #endif /* HSMKEYMGMT_H */
