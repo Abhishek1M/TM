@@ -26,7 +26,7 @@ using namespace std;
 
 class MsgHandler
 {
-  public:
+public:
     MsgHandler(Logger &logger) : td_logger(logger)
     {
     }
@@ -42,14 +42,15 @@ class MsgHandler
     void process0800Msg(Iso8583JSON &msg, TranMgrDBHandler tmdbh);
     //
 
-  private:
+private:
     Logger &td_logger;
 
     bool constructPINBlock(Iso8583JSON &msg, string iss_key_name);
-    bool getNewKeys(Iso8583JSON &msg, string pin_key, string data_key, string master_key);
+    bool getNewKeys(Iso8583JSON &msg);
     void clearRespFields(Iso8583JSON &msg);
     bool allowFallback(Iso8583JSON &msg);
     void updateDateTime(Iso8583JSON &msg);
+    bool checkICAFlag(Iso8583JSON &msg);
 };
 
 /////////////////////////////////////////////////////////////////////////////////////
@@ -106,8 +107,6 @@ bool MsgHandler::processFinMsg(Iso8583JSON &msg, TranMgrDBHandler tmdbh)
     // Update date/time in F073
     updateDateTime(msg);
 
-    // Fill in Card Country details
-
     // Check Fallback
     if (allowFallback(msg) == false)
     {
@@ -123,6 +122,18 @@ bool MsgHandler::processFinMsg(Iso8583JSON &msg, TranMgrDBHandler tmdbh)
     }
 
     // Perform ICA Check
+    if (checkICAFlag(msg) == false)
+    {
+        msg.setField(_039_RSP_CODE, _L3_ICA_DISABLED);
+        dbstatus = tmdbh.addTMDeclineToTrans(msg);
+        msg.setRspMsgType();
+
+        clearRespFields(msg);
+
+        td_logger.error("Internation Transaction Not Allowed\n" + msg.dumpMsg());
+
+        return false;
+    }
 
     // Perform Merchant Limit Check
 
@@ -810,13 +821,15 @@ void MsgHandler::process0800Msg(Iso8583JSON &msg, TranMgrDBHandler tmdbh)
         {
             if (!getNewKeys(msg))
             {
+                msg.setRspMsgType();
+                msg.setField(_039_RSP_CODE, _96_SYSTEM_MALFUNCTION);
             }
         }
     }
     else
     {
         msg.setRspMsgType();
-        msg.setField(_039_RSP_CODE, "00");
+        msg.setField(_039_RSP_CODE, _00_SUCCESSFUL);
     }
 }
 ///////////////////////////////////////////////////////////////////////////////
@@ -825,25 +838,27 @@ bool MsgHandler::getNewKeys(Iso8583JSON &msg)
 {
     if (!msg.isExtendedFieldSet(_016_PIN_KEY))
     {
-        td_logger.warn("getNewKeys - Extd Field 16 absent");
+        td_logger.error("getNewKeys - Extd Field 16 absent");
         return false;
     }
 
     if (!msg.isExtendedFieldSet(_017_DATA_KEY))
     {
-        td_logger.warn("getNewKeys - Extd Field 17 absent");
+        td_logger.error("getNewKeys - Extd Field 17 absent");
         return false;
     }
 
     if (!msg.isFieldSet(_046_ADDITIONAL_DATA_ISO))
     {
-        td_logger.warn("getNewKeys - Field 46 absent");
+        td_logger.error("getNewKeys - Field 46 absent");
         return false;
     }
 
     string pin_key_name = msg.getExtendedField(_016_PIN_KEY);
     string data_key_name = msg.getExtendedField(_017_DATA_KEY);
     string master_key = msg.getField(_046_ADDITIONAL_DATA_ISO);
+
+    return true;
 }
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -991,6 +1006,52 @@ void MsgHandler::updateDateTime(Iso8583JSON &msg)
     tnow = NumberFormatter::format0(now.year(), 4) + NumberFormatter::format0(now.month(), 2) + NumberFormatter::format0(now.day(), 2);
 
     msg.setField(_073_DATE_ACTION, tnow);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool MsgHandler::checkICAFlag(Iso8583JSON &msg)
+{
+    string icaflag;
+    string cardcountry;
+
+    string f120 = msg.getField(_120_TRAN_DATA_REQ);
+
+    MapKeyValue mkv;
+    mkv.fromMsg(f120);
+
+    if (mkv.isKeyPresent("ICA"))
+    {
+        icaflag = mkv.get("ICA");
+    }
+    else
+    {
+        icaflag = "N";
+    }
+
+    if(icaflag.compare("Y")==0)
+    {
+        return true;
+    }
+
+    if (mkv.isKeyPresent("card_country"))
+    {
+        cardcountry = mkv.get("card_country");
+        cardcountry = trim(cardcountry);
+    }
+    else
+    {
+        cardcountry = "XXX";
+    }
+
+    if (cardcountry.compare("IN") == 0 || cardcountry.compare("IND") == 0)
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
 }
 
 #endif /* MSGHANDLER_H */

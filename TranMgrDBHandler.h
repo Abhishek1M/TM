@@ -28,7 +28,7 @@ using Poco::trim;
 
 class TranMgrDBHandler
 {
-  public:
+public:
     TranMgrDBHandler(Logger &logger) : td_logger(logger)
     {
     }
@@ -46,7 +46,7 @@ class TranMgrDBHandler
     bool updateadjustment(string tran_nr);
     bool getrouteinfo(string issuer_node_name, Route &rt);
 
-  private:
+private:
     Logger &td_logger;
 };
 
