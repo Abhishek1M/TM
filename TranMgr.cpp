@@ -162,17 +162,20 @@ public:
 
     virtual void handleRequest(HTTPServerRequest &req, HTTPServerResponse &resp)
     {
-        string responseStr = "OK";
+        LocalDateTime now;
+        string responseStr = Poco::DateTimeFormatter::format(now, "%Y-%m-%d %H:%M:%s");
+        responseStr = responseStr + "\nCommit DB Pending - " + NumberFormatter::format(Config::commit_db.size());
+        responseStr = responseStr + "\nPending Timeout Reversals - " + NumberFormatter::format(Config::msg.size()) + "\n";
+        responseStr = responseStr + "Ok\n";
 
         resp.setStatus(HTTPResponse::HTTP_OK);
-        resp.setContentType("application/json; charset=UTF-8");
 
         ostream &out = resp.send();
         out << responseStr;
 
         out.flush();
 
-        m_logger.notice("Responded with OK");
+        m_logger.notice(responseStr);
     }
 
 private:
@@ -221,7 +224,7 @@ public:
         Config::loadTimeOffset();
 
         resp.setStatus(HTTPResponse::HTTP_OK);
-        resp.setContentType("application/json; charset=UTF-8");
+        //resp.setContentType("application/json; charset=UTF-8");
 
         ostream &out = resp.send();
         out << responseStr;
